@@ -72,63 +72,59 @@ In terms of global coordinates, the base is located at y = 0.
 ## Player Loop (LLM mode)
 
 ### Reset
-
-For ```reset(seed, **paraams)```, we create a default tower. 
+`reset(seed, **params)` — builds the default tower with seeded jitter (x/y offset
+per block, no yaw), settles it to rest, and places the camera at a default vantage
+(three-quarter, mid-height, whole tower in frame). Returns the first observation.
 
 ### Observation
-
-The following is included in the observation is a dictionary with:
-- image - a render from the relevant camera after the action has fully completed 
-- blocks removed  
+Every observation (from `reset` and every `step`) is a dictionary with:
+- image          — a render from the camera's CURRENT position, taken AFTER the
+                   action has fully completed and the tower has settled.
+- camera         — the camera's current pose, reported back so the player can
+                   calibrate intent against result:
+                   { azimuth, elevation, distance, target_block }.
+- blocks_removed — count of successfully extracted blocks so far.
+- TODO: text log / running history exposed to the player? (windowed, ~last 5)
 
 #### Render
+TODO — white background, black base, no shadows; blocks color-coded per the
+color table. Camera intrinsics (FOV ~45°), distance presets, resolution: TODO.
 
-The render is TODO 
+### Camera Model
+The camera is PERSISTENT and STATEFUL. It stays where it was last placed until a
+Change Viewpoint action moves it. Both action types render from the camera's
+current position:
+- Change Viewpoint repositions the camera; the tower is unchanged.
+- Push leaves the camera in place; the render shows the post-push result from
+  wherever the camera currently sits.
+The camera always aims at its target (a block, or layer-center by default), at a
+fixed distance, orbiting by azimuth + elevation.
 
 ### Action Space
-Exactly one action is submitted per `/step` call.
+Exactly one action is submitted per `step` call.
 
-#### Look
+#### Change Viewpoint
+(formerly "Look" — renamed: the player always sees an image; this action only
+moves the eye, it does not grant or withhold sight.)
 
-TODO - add pitch/tilt
-
-Look { layer: 0–17, azimuth: Azimuth, elevation: Elevation }
-- layer        — the layer the camera vertically centers on (whole tower stays in frame).
-- azimuth      — discrete, 8 points: N, NE, E, SE, S, SW, W, NW.
-- elevation    — discrete: Low | Level | High.
-- Effect       — renders a view. Tower state is unchanged. Reward = 0.
-- Budget       — max 3 Looks before a Push is required. A 4th consecutive Look
-                 ends the episode (forced reset).
+ChangeViewpoint { target_block: (layer, color) | layer_center, azimuth, elevation, zoom }
+- target_block — what the camera aims at. A specific block (to inspect a protruding
+                 one), or the center of a layer for an overview. Target is resolved
+                 LIVE from current sim state (a pushed-out block is tracked as it moves).
+- azimuth      — angle around the tower. CONTINUOUS (degrees). The player is told the
+                 resulting azimuth in the observation so it can calibrate.
+- elevation    — vertical angle on the orbit (looking up / level / down). CONTINUOUS.
+- zoom         — Wide | Medium | Close.
+                   Wide   = whole tower in frame (overrides target to tower-center).
+                   Medium = target layer ± a few neighbors.
+                   Close  = tight on the target block.
+- Effect       — repositions the camera, renders the new view. Tower state unchanged.
+                 Reward = 0.
+- Budget       — max 3 consecutive viewpoint changes before a Push is required.
+                 A 4th consecutive one ends the episode (forced reset).
+                 TODO: confirm counter resets on Push, and that this hard-reset
+                 (vs. soft penalty) is the desired behavior.
 
 #### Push
-
-TODO - add push opposite
-
 Push { layer: 0–17, color: Color, face: Face, intensity: Intensity }
-- layer, color — identify the target block (color = slot within the layer).
-- face         — Near | Far, RELATIVE TO THE LAST LOOK's CAMERA. Near = the block
-                 end facing that camera; the block is driven inward, away from it.
-- intensity    — discrete: Gentle | Firm | Hard.  (TODO: map → force, empirical.)
-- Validity     — the block's long axis must be sufficiently aligned with the last
-                 camera direction (|axis · view| > τ). If not, the Push is REJECTED
-                 and the player must Look from an aligned angle first. τ TODO.
-- Effect       — applies a bell-curve-ramped axial force over a fixed slow duration,
-                 then settles. Resets the Look counter.
-
-
-### Env Response
-
-TODO
-
-#### Reward
-- Successful extraction (block fully out AND tower still standing after settle):
-      +1 / N   where N = practical max removable.  (TODO: N empirical.)
-- Look: 0.
-- A Push that topples the tower: 0 for that block; episode ends.
-
-### Episode Termination (done = true)
-
-- Collapse — any still-stacked block leaves its position (e.g. ends up on the base).
-- Forced reset — a 4th consecutive Look.
-- (Optional) step cap — TODO.
-No retries; score is locked at termination.
+- layer, color — identify the target block (color = slot
