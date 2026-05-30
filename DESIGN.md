@@ -54,7 +54,7 @@ The Jenga tower. It consists of 54 blocks at the start, with 18 layers where the
 
 ### Base
 
-The base where the Jenga tower stands on. It's black, about one meter tall, and 2.5 x 2.5 meter squared in terms of area.
+The base where the Jenga tower stands on. It's black, about 3 layers tall (~4.5 cm), and 2.5 x 2.5 meter squared in terms of area.
 
 ### Camera State
 
@@ -69,18 +69,18 @@ The camera state contains:
 
 | Field        | Description                                                                                                      |
 |--------------|------------------------------------------------------------------------------------------------------------------|
-| target_block | what the camera aims at. A specific block's center. Resolved live from current sim state. If the target block is gone, aim where it would have been. |
-| azimuth      | angle around the tower. Continuous (degrees).                                                                    |
-| pitch    | vertical pitch/X angle on the orbit (looking up / level / down). Continuous.                                             |
-| distance     | distance from target.                                                                                            |
+| target_block | what the camera aims at. A specific block's center. Resolved live from current sim state. If the target block is removed, resets to the default target from reset. |
+| azimuth      | angle around the tower. Continuous, 0–360 degrees.                                                               |
+| pitch        | vertical angle, looking up or down. Continuous, -90 to 90 degrees.                                               |
+| distance     | distance from target in cm. Range: minimum close-up to maximum that fits entire tower from center.               |
 
-Begins SW in the middle layers.
+Default camera on reset: three-quarter view (diagonal azimuth, e.g. SW), mid-height (~layer 9–10), slightly looking down, whole tower in frame with base visible. Diagonal azimuths (NE, SE, SW, NW) show two faces at once and give better depth reading than flat cardinal views.
 
 ### Physics State
 
 The tower and base in a 3D physics simulation.
 
-In terms of global coordinates, the base is located at y = 0.
+In terms of global coordinates, the base surface is at z = 0. The tower sits on top of the base.
 
 ### Settling
 
@@ -107,14 +107,16 @@ Every observation (from `reset` and every `step`) is a dictionary with:
 | image          | a render from the camera's current position, taken after the action has fully completed and the tower has settled.   |
 | camera         | the camera's current pose, reported back so the player can calibrate intent against result: { azimuth, pitch, distance, target_block }. |
 | blocks_removed | count of successfully extracted blocks so far.                                                                       |
-| log            | array of the last 5 action+annotation pairs (most recent first).                                                     |
+| available_slots | during PlaceBack phase: list of open slots (Left, Middle, Right) on the next top layer. Null otherwise.              |
+| log            | array of the last 5 action+annotation pairs (most recent first). Empty on first observation from reset.              |
 
 #### Render
 
 White background, black base, blocks color-coded per the color table.
 Soft diffuse lighting (studio-style, no direct sun) — high ambient, moderate
-diffuse, no specular. Shadows are soft for depth cues without harsh contrast
-or blown-out highlights that would obscure block colors for the LLM.
+diffuse, low specular for edge definition. Shadows are soft for depth cues
+without harsh contrast or blown-out highlights that would obscure block colors
+for the LLM.
 
 ### Action Space
 Exactly one action is submitted per `step` call. Three action types: ChangeViewpoint, Push, PlaceBack. Every action includes an annotation where the player self-reports reasoning:
@@ -134,7 +136,7 @@ Sets a new camera state. Tower state unchanged. Reward = 0.
 
 | Field     | Description                                                                                              |
 |-----------|----------------------------------------------------------------------------------------------------------|
-| layer     | 0–17, identifies the target layer                                                                        |
+| layer     | 1–18 (bottom to top), identifies the target layer                                                        |
 | color     | identifies the target block within the layer (color = slot)                                              |
 | face      | cardinal direction of the face to push from. North-South blocks: North or South. East-West blocks: East or West. Push from North = force applied southward through the block. |
 | contact   | where on the face to apply force. Discrete 3x3 grid: top-left, top-center, top-right, center-left, center, center-right, bottom-left, bottom-center, bottom-right. Off-center contact generates torque. |
@@ -142,15 +144,15 @@ Sets a new camera state. Tower state unchanged. Reward = 0.
 
 | Rule      | Description                                                                                              |
 |-----------|----------------------------------------------------------------------------------------------------------|
-| Effect    | applies a bell-curve-ramped axial force over a fixed slow duration (quasi-static), then settles.         |
+| Effect    | applies a bell-curve-ramped axial force over a fixed duration (same duration for all intensities, only magnitude varies), then settles. |
 
 #### Place Back
 
-Triggered automatically after a successful extraction. The agent chooses where to place the removed block on top of the tower. Does not count toward the action budget.
+After a successful extraction, the agent may look (ChangeViewpoint) before placing, but must PlaceBack before any Push. Viewpoints during this phase count toward the action budget.
 
 | Field    | Description                                                                                    |
 |----------|------------------------------------------------------------------------------------------------|
-| position | Left, Middle, or Right slot on the next top layer                                              |
+| position | Left, Middle, or Right slot on the next top layer. Observation tells the agent which slots are available. Picking an occupied slot is an invalid action. |
 
 | Rule     | Description                                                                                    |
 |----------|------------------------------------------------------------------------------------------------|
@@ -163,12 +165,17 @@ Triggered automatically after a successful extraction. The agent chooses where t
 
 #### Reward
 
-| Outcome               | Reward |
-|------------------------|--------|
-| Successful extraction  | +1     |
-| Change Viewpoint       | 0      |
-| Invalid action         | -0.05  |
-| Collapse               | -1     |
+| Outcome               | Reward   |
+|------------------------|----------|
+| Successful extraction  | 1/98     |
+| Change Viewpoint       | 0        |
+| PlaceBack              | 0        |
+| Invalid action         | -0.5     |
+| Collapse               | 0 (episode terminates) |
+
+Theoretical max: 98 extractions = 100% score.
+
+Invalid actions: pushing a removed block, pushing when PlaceBack is required, PlaceBack when no extraction happened, placing in an occupied slot, values outside allowed ranges.
 
 ### Removal
 
@@ -183,7 +190,7 @@ A non-pushed block loses contact with something it should be in contact with aft
 | Condition    | Description                                                              |
 |--------------|--------------------------------------------------------------------------|
 | Collapse     | a non-pushed block loses a required contact                              |
-| Action budget | 10 total actions without a successful extraction terminates the episode |
+| Action budget | 10 actions without a successful extraction. Resets after each extraction. |
 
 No retries; score is locked at termination.
 
@@ -197,3 +204,20 @@ No retries; score is locked at termination.
 | RL training APIs             | benchmark is for evaluation, not training        |
 | Deformable materials         | blocks are rigid                                 |
 | Photorealism                 | studio lighting is sufficient for LLM perception |
+
+## Showcase / Replay Viewer
+
+The showcase is a Three.js replay viewer. Not authoritative — driven entirely by exported replay traces.
+
+| Feature        | Description                                                  |
+|----------------|--------------------------------------------------------------|
+| Floor           | visible floor beneath the base for blocks to land on        |
+| Block physics   | high restitution (bouncy) for fallen/extracted blocks       |
+| Sound effects   | impact sounds on block collisions, extraction, collapse     |
+| 3D playback     | full tower replay with timeline scrubbing                   |
+| Camera replay   | replay the agent's camera movements                         |
+| AI reasoning    | display annotation (saw/did/why) per step                   |
+
+## TODO
+
+- Agent instructions / system prompt — what text does the AI receive explaining the rules, actions, and observations?
