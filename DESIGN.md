@@ -53,26 +53,45 @@ Note that these colors is to maximize purely contrast.
 
 ### Tower
 
-The Jenga tower. It consists of 54 blocks, with 18 layers where the bottom most layer is North-South, and then it alternates from then. 
+The Jenga tower. It consists of 54 blocks at the start, with 18 layers where the bottom most layer is North-South, and then it alternates from then. 
+
+### Base
+
+The base where the Jenga tower stands on. It's black, about one meter tall, and 2.5 x 2.5 meter squared in terms of area.
+
+### Camera State
+
+Camera always have a TODO
+
+### Physics State
+
+The tower and base in a 3D physics simulation.
+
+In terms of global coordinates, the base is located at y = 0.
 
 ## Player Loop (LLM mode)
 
+### Reset
+
+For ```reset(seed, **paraams)```, we create a default tower. 
+
 ### Observation
 
-The following is included in the observation:
-- image   — a render from the relevant camera. For Look: the requested camera.
-            For Push: the last-used camera, re-rendered AFTER settling so the
-            player sees the consequence. (/reset supplies a default initial view,
-            establishing the first camera reference.)
-- White background, black base, no shadows. Blocks color-coded per the table.
-- Blocks that have been extracted are absent from the tower.
+The following is included in the observation is a dictionary with:
+- image - a render from the relevant camera after the action has fully completed 
+- blocks removed  
 
-### Action Space
+#### Render
+
+The render is TODO 
 
 ### Action Space
 Exactly one action is submitted per `/step` call.
 
 #### Look
+
+TODO - add pitch/tilt
+
 Look { layer: 0–17, azimuth: Azimuth, elevation: Elevation }
 - layer        — the layer the camera vertically centers on (whole tower stays in frame).
 - azimuth      — discrete, 8 points: N, NE, E, SE, S, SW, W, NW.
@@ -82,6 +101,9 @@ Look { layer: 0–17, azimuth: Azimuth, elevation: Elevation }
                  ends the episode (forced reset).
 
 #### Push
+
+TODO - add push opposite
+
 Push { layer: 0–17, color: Color, face: Face, intensity: Intensity }
 - layer, color — identify the target block (color = slot within the layer).
 - face         — Near | Far, RELATIVE TO THE LAST LOOK's CAMERA. Near = the block
@@ -94,13 +116,18 @@ Push { layer: 0–17, color: Color, face: Face, intensity: Intensity }
                  then settles. Resets the Look counter.
 
 
-### Reward
+### Env Response
+
+TODO
+
+#### Reward
 - Successful extraction (block fully out AND tower still standing after settle):
       +1 / N   where N = practical max removable.  (TODO: N empirical.)
 - Look: 0.
 - A Push that topples the tower: 0 for that block; episode ends.
 
 ### Episode Termination (done = true)
+
 - Collapse — any still-stacked block leaves its position (e.g. ends up on the base).
 - Forced reset — a 4th consecutive Look.
 - (Optional) step cap — TODO.
