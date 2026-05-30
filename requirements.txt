@@ -1,0 +1,9 @@
+# Optional: packages YOUR env imports (numpy, pandas, …).
+#
+# - Local dev: only needed if env.py (or helpers) import them. Default scaffold
+#   uses the stdlib only — skip `pip install -r requirements.txt`.
+# - Platform: sandbox/worker runs `pip install -r requirements.txt` on submit.
+#
+# Do not list bench_common / mesocosm here — the CLI wheel (local) and the
+# sandbox image (cloud) already provide bench_common, fastapi, uvicorn, httpx,
+# and pydantic for adapter.py.

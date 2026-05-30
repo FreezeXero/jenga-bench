@@ -1,0 +1,50 @@
+{
+  "id": "my-env",
+  "adapter": "adapter.py",
+  "name": "My Environment",
+  "description": "One-sentence description of what this benchmark evaluates.",
+
+  "binding_vow": {
+    "version": "1.0.0",
+    "tier": "tier1",
+    "description": "Longer description of the task and what makes a good agent.",
+
+    "observation_space": {
+      "type": "json",
+      "description": "{ \"question\": string }"
+    },
+
+    "action_space": {
+      "type": "text",
+      "description": "Free-text answer from the agent"
+    },
+
+    "reward": {
+      "type": "binary",
+      "range": { "low": 0.0, "high": 1.0 },
+      "description": "1.0 if correct, 0.0 otherwise"
+    },
+
+    "episode": {
+      "max_steps": 10,
+      "deterministic_reset": true,
+      "supports_seed": true,
+      "parallel_episodes": 1,
+      "observability": "full"
+    },
+
+    "techniques": []
+  },
+
+  "scoring": {
+    "primary_metric": "accuracy",
+    "higher_is_better": true,
+    "metrics": [
+      {
+        "name": "accuracy",
+        "type": "episode_reward",
+        "aggregation": "pass_rate"
+      }
+    ]
+  }
+}

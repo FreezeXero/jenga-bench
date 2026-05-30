@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "domain_id": "your-domain-uuid",
+  "binding_vow_version": "1.0.0",
+  "visibility": "gallery_public",
+  "replay": {
+    "episode-uuid": [
+      {
+        "step": 1,
+        "observation": { "question": "Example prompt for your UI" },
+        "reasoning": "Two signals. The model explains its thinking in plain text — style this in your showcase.",
+        "action": "buy",
+        "reward": 0.0,
+        "terminated": false
+      }
+    ]
+  }
+}
