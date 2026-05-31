@@ -1,0 +1,17 @@
+[project]
+name = "jenga-bench"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+    "numpy>=2.4",
+    "pybullet>=3.2",
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+]
+
+[tool.setuptools.packages.find]
+include = ["jenga*"]
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
