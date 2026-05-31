@@ -21,14 +21,11 @@ Each block is 1.5 cm tall, 2.5 cm wide, 7.5 cm long. It has the weight of 120 gr
 
 Each block has their own color. In the following table:
 
-| Color       | oklch                 | RGB Hex   |
-|-------------|-----------------------|-----------|
-| Red         | oklch(0.2, 0.05, 0)   | `#A04848` |
-| Brown       | oklch(0.2, 0.05, 60)  | `#7C5B3F` |
-| Lime        | oklch(0.2, 0.05, 120) | `#789146` |
-| Wintergreen | oklch(0.2, 0.05, 180) | `#40947F` |
-| Blue        | oklch(0.2, 0.05, 240) | `#4664A5` |
-| Purple      | oklch(0.2, 0.05, 300) | `#7B5498` |
+| Color       | oklch                  | RGB Hex   |
+|-------------|------------------------|-----------|
+| Red         | oklch(0.7, 0.1525, 30) | `#EE7563` |
+| Brown       | oklch(0.75, 0.1, 60)   | `#DD9F6B` |
+| Blue        | oklch(0.7, 0.1275, 270)| `#8099EE` |
 
 #### Long Axis of a Block
 
@@ -43,10 +40,10 @@ East-West layers are when the long axis is aligned East to West.
 
 | Layer Type   | Position Order       | Colors                     |
 |--------------|----------------------|----------------------------|
-| North-South  | East, Middle, West   | Red, Lime, Blue            |
-| East-West    | South, Middle, North | Wintergreen, Purple, Brown |
+| North-South  | East, Middle, West   | Blue, Brown, Red           |
+| East-West    | South, Middle, North | Blue, Brown, Red           |
 
-Note that these colors is to maximize purely contrast.
+All layers use the same three colors. No alternation.
 
 ### Tower
 

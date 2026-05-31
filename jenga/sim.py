@@ -43,7 +43,7 @@ RAMP_STEPS = round(RAMP_DURATION_SECONDS / TIMESTEP)
 LATERAL_FRICTION = PHYSICS.lateral_friction
 FRAME_SAMPLE_STEPS = PHYSICS.frame_sample_steps
 PLACEMENT_DROP_HEIGHT = PHYSICS.placement_drop_height
-MAX_PLACEMENT_ROTATION_DEGREES = PHYSICS.max_placement_rotation_degrees
+
 COLLAPSE_CONSECUTIVE_STEPS = 30
 
 CONTACTS = (
@@ -104,7 +104,6 @@ class PushResult:
 @dataclass(frozen=True)
 class PlaceRequest:
     position: str
-    rotation_degrees: float
 
 
 @dataclass(frozen=True)
@@ -260,7 +259,7 @@ class JengaSimulation:
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="ramp"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target)
-            if self._check_collapse(contact_snapshot, collapse_lost_steps):
+            if self._check_collapse(contact_snapshot, collapse_lost_steps, target.body_id):
                 if continue_after_collapse:
                     sequence, simulated_steps = self._settle_collapse_tail(
                         frames, sequence, simulated_steps, frame_callback
@@ -281,7 +280,7 @@ class JengaSimulation:
         )
         if not settled:
             logger.debug("failed to settle in time — checking final state")
-            if self._check_collapse(contact_snapshot, collapse_lost_steps):
+            if self._check_collapse(contact_snapshot, collapse_lost_steps, target.body_id):
                 outcome = "collapse"
             elif extracted:
                 outcome = "extracted"
@@ -388,7 +387,7 @@ class JengaSimulation:
             color_name=slot.color_name,
             rgb=slot.rgb,
             position=position,
-            yaw_degrees=base_yaw + float(request.rotation_degrees),
+            yaw_degrees=base_yaw,
         )
         frames = [self.frame(sequence=0, sim_time=0.0, phase="initial")]
         self._emit_frame(frames[-1], frame_callback)
@@ -461,11 +460,6 @@ class JengaSimulation:
             raise PlaceValidationError("position must be Left, Middle, or Right")
         if request.position not in self.available_placement_positions:
             raise PlaceValidationError("position is already occupied")
-        angle = request.rotation_degrees
-        if isinstance(angle, bool) or not isinstance(angle, (int, float)) or not math.isfinite(float(angle)):
-            raise PlaceValidationError("rotation_degrees must be finite and numeric")
-        if not -MAX_PLACEMENT_ROTATION_DEGREES <= float(angle) <= MAX_PLACEMENT_ROTATION_DEGREES:
-            raise PlaceValidationError("rotation_degrees must be between -5 and 5")
         return self.held_block
 
     def _next_placement_layer(self) -> int:
@@ -475,11 +469,11 @@ class JengaSimulation:
 
     def _placement_row_anchor(self) -> tuple[float, float]:
         if self.placement_anchor is None:
-            top = self.top_layer
+            anchor_layer = max(self.top_layer - 1, 1)
             positions = [
                 bullet.getBasePositionAndOrientation(block.body_id, physicsClientId=self.client_id)[0]
                 for block in self.blocks
-                if block.body_id not in self.retired_body_ids and block.spec.layer == top
+                if block.body_id not in self.retired_body_ids and block.spec.layer == anchor_layer
             ]
             self.placement_anchor = (
                 sum(position[0] for position in positions) / len(positions),
@@ -563,10 +557,10 @@ class JengaSimulation:
                 snapshot[block.body_id] = vertical
         return snapshot
 
-    def _check_collapse(self, snapshot: dict[int, set[int]], lost_steps: dict[int, int]) -> bool:
+    def _check_collapse(self, snapshot: dict[int, set[int]], lost_steps: dict[int, int], target_id: int = -1) -> bool:
         ground_ids = {self.base_body_id, self.floor_body_id}
         for block in self.blocks:
-            if block.body_id in self.retired_body_ids or block.spec.layer == 1:
+            if block.body_id in self.retired_body_ids or block.spec.layer == 1 or block.body_id == target_id:
                 continue
             contacts = bullet.getContactPoints(bodyA=block.body_id, physicsClientId=self.client_id)
             if any(c[2] in ground_ids for c in contacts):
@@ -619,7 +613,7 @@ class JengaSimulation:
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="settle"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target)
-            if self._check_collapse(contact_snapshot, collapse_lost_steps):
+            if self._check_collapse(contact_snapshot, collapse_lost_steps, target.body_id):
                 return False, extracted, sequence, simulated_steps, settle_step
             if self._all_blocks_below_velocity_thresholds(ignored_body_id=target.body_id if extracted else None):
                 stable_steps += 1
@@ -701,7 +695,7 @@ class JengaSimulation:
         floor_visual = bullet.createVisualShape(
             bullet.GEOM_BOX,
             halfExtents=floor_half,
-            rgbaColor=(0.96, 0.96, 0.96, 1.0),
+            rgbaColor=(0.59, 0.39, 0.26, 1.0),
             physicsClientId=self.client_id,
         )
         self.floor_body_id = bullet.createMultiBody(
@@ -711,6 +705,11 @@ class JengaSimulation:
             basePosition=(0.0, 0.0, FLOOR_CENTER_Z),
             physicsClientId=self.client_id,
         )
+        bullet.changeDynamics(
+            self.floor_body_id, -1,
+            restitution=PHYSICS.floor_restitution,
+            physicsClientId=self.client_id,
+        )
         base_half = tuple(value / 2 for value in BASE_SIZE)
         base_collision = bullet.createCollisionShape(
             bullet.GEOM_BOX, halfExtents=base_half, physicsClientId=self.client_id
@@ -718,7 +717,7 @@ class JengaSimulation:
         base_visual = bullet.createVisualShape(
             bullet.GEOM_BOX,
             halfExtents=base_half,
-            rgbaColor=(0.03, 0.03, 0.035, 1.0),
+            rgbaColor=(0.35, 0.22, 0.14, 1.0),
             physicsClientId=self.client_id,
         )
         self.base_body_id = bullet.createMultiBody(
@@ -732,6 +731,7 @@ class JengaSimulation:
             self.base_body_id,
             -1,
             lateralFriction=PHYSICS.lateral_friction,
+            restitution=PHYSICS.floor_restitution,
             physicsClientId=self.client_id,
         )
         bodies = []
@@ -764,7 +764,7 @@ class JengaSimulation:
             spinningFriction=PHYSICS.spinning_friction,
             linearDamping=PHYSICS.linear_damping,
             angularDamping=PHYSICS.angular_damping,
-            restitution=0.0,
+            restitution=PHYSICS.restitution,
             physicsClientId=self.client_id,
         )
         return BlockBody(spec=spec, body_id=body_id)

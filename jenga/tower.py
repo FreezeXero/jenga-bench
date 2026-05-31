@@ -38,14 +38,14 @@ class SlotDefinition:
 
 
 NORTH_SOUTH_SLOTS = (
-    SlotDefinition("East", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Red", (160, 72, 72)),
-    SlotDefinition("Middle", 0.0, "Lime", (120, 145, 70)),
-    SlotDefinition("West", BLOCK_WIDTH + BLOCK_CLEARANCE, "Blue", (70, 100, 165)),
+    SlotDefinition("East", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Blue", (128, 153, 238)),
+    SlotDefinition("Middle", 0.0, "Brown", (221, 159, 107)),
+    SlotDefinition("West", BLOCK_WIDTH + BLOCK_CLEARANCE, "Red", (238, 117, 99)),
 )
 EAST_WEST_SLOTS = (
-    SlotDefinition("South", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Wintergreen", (64, 148, 127)),
-    SlotDefinition("Middle", 0.0, "Purple", (123, 84, 152)),
-    SlotDefinition("North", BLOCK_WIDTH + BLOCK_CLEARANCE, "Brown", (124, 91, 63)),
+    SlotDefinition("South", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Blue", (128, 153, 238)),
+    SlotDefinition("Middle", 0.0, "Brown", (221, 159, 107)),
+    SlotDefinition("North", BLOCK_WIDTH + BLOCK_CLEARANCE, "Red", (238, 117, 99)),
 )
 
 

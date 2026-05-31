@@ -138,7 +138,6 @@ class JengaBenchEnv(BaseEnv):
         try:
             request = PlaceRequest(
                 position=action.get("position"),
-                rotation_degrees=action.get("rotation_degrees"),
             )
             place_result = self._simulation.place_back(request)
         except PlaceValidationError as exc:
@@ -195,11 +194,11 @@ class JengaBenchEnv(BaseEnv):
             "Return exactly one JSON action. Available actions: "
             '{"type":"ChangeViewpoint","azimuth":0..360,"pitch":-90..90,'
             '"distance_cm":20..120} or '
-            '{"type":"Push","layer":"1..one below current top layer","color":"Red|Lime|Blue|Wintergreen|Purple|Brown",'
+            '{"type":"Push","layer":"1..one below current top layer","color":"Blue|Brown|Red",'
             '"face":"North|South|East|West","contact":"top-left|top-center|top-right|'
             'center-left|center|center-right|bottom-left|bottom-center|bottom-right",'
             '"intensity":"Gentle|Firm|Hard"} or '
-            '{"type":"PlaceBack","position":"Left|Middle|Right","rotation_degrees":-5..5}. '
+            '{"type":"PlaceBack","position":"Left|Middle|Right"}. '
             f"Camera: azimuth={self._camera.azimuth:.2f}, pitch={self._camera.pitch:.2f}, "
             f"distance_cm={self._camera.distance_cm:.2f}. "
             f"Consecutive viewpoints: {self._consecutive_viewpoints}/{VIEWPOINT_LIMIT}. "
