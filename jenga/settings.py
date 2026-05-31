@@ -70,7 +70,7 @@ class RenderSettings:
     light_direction: tuple[float, float, float] = (3.0, -4.0, 6.0)
     light_color: tuple[float, float, float] = (1.0, 1.0, 1.0)
     light_ambient_coefficient: float = 0.7
-    light_diffuse_coefficient: float = 0.6
+    light_diffuse_coefficient: float = 0.3
     light_specular_coefficient: float = 0.05
 
 

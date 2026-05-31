@@ -695,7 +695,7 @@ class JengaSimulation:
         floor_visual = bullet.createVisualShape(
             bullet.GEOM_BOX,
             halfExtents=floor_half,
-            rgbaColor=(0.96, 0.96, 0.96, 1.0),
+            rgbaColor=(0.59, 0.39, 0.26, 1.0),
             physicsClientId=self.client_id,
         )
         self.floor_body_id = bullet.createMultiBody(
@@ -717,7 +717,7 @@ class JengaSimulation:
         base_visual = bullet.createVisualShape(
             bullet.GEOM_BOX,
             halfExtents=base_half,
-            rgbaColor=(0.03, 0.03, 0.035, 1.0),
+            rgbaColor=(0.35, 0.22, 0.14, 1.0),
             physicsClientId=self.client_id,
         )
         self.base_body_id = bullet.createMultiBody(

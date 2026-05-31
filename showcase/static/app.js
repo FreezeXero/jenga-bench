@@ -179,13 +179,14 @@ function createMainProgram() {
       vec3 sc = shadowCoord.xyz / shadowCoord.w * 0.5 + 0.5;
       float shadow = 1.0;
       if (sc.x >= 0.0 && sc.x <= 1.0 && sc.y >= 0.0 && sc.y <= 1.0) {
-        float bias = max(0.02 * (1.0 - dot(faceNormal, lightDir)), 0.005);
+        float bias = max(0.03 * (1.0 - dot(faceNormal, lightDir)), 0.008);
         float closest = texture2D(shadowMap, sc.xy).r;
-        shadow = sc.z - bias > closest ? 0.0 : 1.0;
+        shadow = sc.z - bias > closest ? 0.4 : 1.0;
       }
-      float diffuse = max(dot(faceNormal, lightDir), 0.0) * 0.35 * shadow;
-      float ambient = 0.75;
-      gl_FragColor = vec4(faceColor * min(ambient + diffuse, 1.0), 1.0);
+      float diffuse = max(dot(faceNormal, lightDir), 0.0) * 0.6 * shadow;
+      float specular = pow(max(dot(faceNormal, lightDir), 0.0), 16.0) * 0.05 * shadow;
+      float ambient = 0.7;
+      gl_FragColor = vec4(faceColor * min(ambient + diffuse, 1.0) + vec3(specular), 1.0);
     }
   `));
   gl.linkProgram(prog);
@@ -270,7 +271,9 @@ function loadGeometry() {
   const positions = [];
   const colors = [];
   const normals = [];
-  for (const box of [scene.base, ...scene.blocks]) appendBox(box, positions, colors, normals);
+  const boxes = [scene.base, ...scene.blocks];
+  if (scene.floor) boxes.unshift(scene.floor);
+  for (const box of boxes) appendBox(box, positions, colors, normals);
   vertexCount = positions.length / 3;
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);

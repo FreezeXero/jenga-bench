@@ -25,7 +25,7 @@ from jenga.sim import (
     PushRequest,
     PushValidationError,
 )
-from jenga.tower import BASE_CENTER_Z, BASE_SIZE, Orientation
+from jenga.tower import BASE_CENTER_Z, BASE_SIZE, FLOOR_CENTER_Z, FLOOR_SIZE, Orientation
 
 DEFAULT_CAMERA = CameraPose(azimuth=225.0, pitch=15.0, distance_cm=45.0)
 MIN_INSPECTOR_PITCH = -45.0
@@ -109,10 +109,15 @@ class PreviewState:
                 "seed": self._seed,
                 "camera": _camera_payload(self._camera),
                 "target": (0.0, 0.0, 0.135),
+                "floor": {
+                    "position": (0.0, 0.0, FLOOR_CENTER_Z),
+                    "size": FLOOR_SIZE,
+                    "color": (150, 99, 66),
+                },
                 "base": {
                     "position": (0.0, 0.0, BASE_CENTER_Z),
                     "size": BASE_SIZE,
-                    "color": (8, 8, 9),
+                    "color": (89, 56, 36),
                 },
                 "blocks": blocks,
                 "phase": self._simulation.phase,
