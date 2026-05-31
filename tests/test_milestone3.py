@@ -225,6 +225,27 @@ class DynamicTowerTests(unittest.TestCase):
         finally:
             sim.close()
 
+    def test_transient_tilt_is_not_an_immediate_collapse(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            block = sim.blocks[0]
+            position, _ = bullet.getBasePositionAndOrientation(
+                block.body_id, physicsClientId=sim.client_id
+            )
+            tilted = bullet.getQuaternionFromEuler((0.0, 0.5, 0.0))
+            bullet.resetBasePositionAndOrientation(
+                block.body_id,
+                position,
+                tilted,
+                physicsClientId=sim.client_id,
+            )
+
+            self.assertTrue(sim._has_obvious_collapse(target_id=-1))
+            self.assertFalse(sim._has_obvious_collapse(target_id=-1, include_tilt=False))
+        finally:
+            sim.close()
+
     def test_collapse_takes_precedence_over_extraction(self) -> None:
         sim = JengaSimulation()
         try:
@@ -366,6 +387,29 @@ class SandboxWebSocketTests(unittest.TestCase):
                 self.assertEqual(websocket.receive_json(), {"type": "error", "message": "busy"})
         finally:
             motion_lock.release()
+
+    def test_preview_requires_reset_after_collapse(self) -> None:
+        preview.reset_scene(seed=0)
+        assert preview._simulation is not None
+        target = preview._simulation._validate_push(REQUEST)
+        other = next(block for block in preview._simulation.blocks if block.body_id != target.body_id)
+        position, rotation = bullet.getBasePositionAndOrientation(
+            other.body_id, physicsClientId=preview._simulation.client_id
+        )
+        bullet.resetBasePositionAndOrientation(
+            other.body_id,
+            (position[0], position[1], -0.01),
+            rotation,
+            physicsClientId=preview._simulation.client_id,
+        )
+
+        frames = preview.push(REQUEST)
+
+        self.assertEqual(frames[-1]["phase"], "collapse")
+        with self.assertRaisesRegex(RuntimeError, "reset is required"):
+            preview.push(REQUEST)
+        preview.reset_scene(seed=0)
+        self.assertEqual(preview.push(REQUEST)[-1]["phase"], "settled")
 
 
 if __name__ == "__main__":

@@ -11,8 +11,8 @@ import argparse
 from bench_common.env_sdk import serve
 from env import JengaBenchEnv
 
-# Image observations require the Mesocosm env_sdk interface from:
-# https://github.com/swecc-uw/swecc-core/commit/d4b81907456b17f50a878d40980b5e6aa9b74c9b
+# The Mesocosm env_sdk adapter transports image observations declared by
+# reset() and StepResult.content_type. Install or upgrade swecc-mesocosm.
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

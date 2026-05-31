@@ -248,7 +248,7 @@ class JengaSimulation:
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="ramp"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target, initial_position, direction)
-            if self._has_obvious_collapse(target.body_id):
+            if self._has_obvious_collapse(target.body_id, include_tilt=False):
                 if continue_after_collapse:
                     sequence, simulated_steps = self._settle_collapse_tail(
                         frames, sequence, simulated_steps, frame_callback
@@ -398,7 +398,7 @@ class JengaSimulation:
                 )
                 frames.append(frame)
                 self._emit_frame(frame, frame_callback)
-            if self._has_obvious_collapse(target_id=-1):
+            if self._has_obvious_collapse(target_id=-1, include_tilt=False):
                 break
             if self._all_blocks_below_velocity_thresholds():
                 stable_steps += 1
@@ -526,7 +526,7 @@ class JengaSimulation:
         movement = sum((position[index] - initial_position[index]) * direction[index] for index in range(3))
         return movement >= BLOCK_LENGTH
 
-    def _has_obvious_collapse(self, target_id: int) -> bool:
+    def _has_obvious_collapse(self, target_id: int, *, include_tilt: bool = True) -> bool:
         for block in self.blocks:
             if block.body_id == target_id or block.body_id in self.retired_body_ids:
                 continue
@@ -538,7 +538,7 @@ class JengaSimulation:
                 return True
             if abs(position[0]) > BASE_HALF_WIDTH or abs(position[1]) > BASE_HALF_WIDTH:
                 return True
-            if math.degrees(max(abs(roll), abs(pitch))) > MAX_TILT_DEGREES:
+            if include_tilt and math.degrees(max(abs(roll), abs(pitch))) > MAX_TILT_DEGREES:
                 return True
         return False
 
@@ -563,7 +563,7 @@ class JengaSimulation:
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="settle"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target, initial_position, direction)
-            if self._has_obvious_collapse(target.body_id):
+            if self._has_obvious_collapse(target.body_id, include_tilt=False):
                 return False, extracted, sequence, simulated_steps, settle_step
             if self._all_blocks_below_velocity_thresholds(ignored_body_id=target.body_id if extracted else None):
                 stable_steps += 1

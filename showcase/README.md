@@ -19,10 +19,8 @@ Build a marketing or demo UI **in this repository** that replays a real bench ru
    - `action` — parsed action sent to the env
    - `reward`, `terminated`, etc.
 
-Public runs (`gallery_public` + completed) can also be viewed at:
-
-`https://mesocosm…/runs/RUN_ID` (no login).
-
 ## `replay.json` shape
 
-See `replay.example.json`. Use `replay[episode_id][i].reasoning` for showcase-style prose, similar to Mesocosm’s curated trading demo.
+Treat a real `mesocosm run export RUN_ID -o showcase/replay.json` export as the
+source of truth for the replay shape. Use each exported turn's `reasoning` field
+for showcase-style prose.

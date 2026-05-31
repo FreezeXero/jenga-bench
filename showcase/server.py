@@ -47,6 +47,7 @@ class PreviewState:
         self._camera = DEFAULT_CAMERA
         self._push_lock = Lock()
         self._seed = 0
+        self._terminated = False
 
     @property
     def camera(self) -> CameraPose:
@@ -128,13 +129,17 @@ class PreviewState:
             raise RuntimeError("busy")
         try:
             with self._lock:
+                if self._terminated:
+                    raise RuntimeError("tower collapsed; reset is required")
                 self._ensure_simulation()
                 assert self._simulation is not None
-                return self._simulation.push(
+                frames = self._simulation.push(
                     request,
                     frame_callback=frame_callback,
                     continue_after_collapse=True,
                 ).frames
+                self._terminated = frames[-1]["phase"] == "collapse"
+                return frames
         finally:
             self._push_lock.release()
 
@@ -147,13 +152,17 @@ class PreviewState:
             raise RuntimeError("busy")
         try:
             with self._lock:
+                if self._terminated:
+                    raise RuntimeError("tower collapsed; reset is required")
                 self._ensure_simulation()
                 assert self._simulation is not None
-                return self._simulation.place_back(
+                frames = self._simulation.place_back(
                     request,
                     frame_callback=frame_callback,
                     continue_after_collapse=True,
                 ).frames
+                self._terminated = frames[-1]["phase"] == "collapse"
+                return frames
         finally:
             self._push_lock.release()
 
@@ -174,6 +183,7 @@ class PreviewState:
         self._simulation = JengaSimulation()
         self._simulation.reset(seed=seed)
         self._camera = DEFAULT_CAMERA
+        self._terminated = False
 
     def _render_locked(self) -> bytes:
         assert self._simulation is not None

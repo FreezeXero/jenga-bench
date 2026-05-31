@@ -102,6 +102,7 @@ class InspectorRouteTests(unittest.TestCase):
         self.assertIn("pendingResult = message", script.text)
         self.assertIn("function framesVisuallyMatch", script.text)
         self.assertIn("clamp(camera.pitch + deltaY * .4, -45, 75)", script.text)
+        self.assertIn('sandboxTerminated = message.outcome === "collapse"', script.text)
         self.assertEqual(script.headers["cache-control"], "no-store")
         self.assertEqual(styles.status_code, 200)
         self.assertEqual(health.json()["status"], "ok")

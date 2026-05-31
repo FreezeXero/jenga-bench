@@ -14,6 +14,7 @@ let sandboxBusy = false;
 let frameQueue = [];
 let framePlaying = false;
 let pendingResult = null;
+let sandboxTerminated = false;
 const VISUAL_POSITION_EPSILON = .0005;
 const VISUAL_ROTATION_EPSILON = .002;
 const colorOptions = {
@@ -244,8 +245,8 @@ function setBusy(busy) {
 
 function updateActionControls() {
   const placementRequired = scene?.phase === "place_back";
-  document.querySelector("#push").disabled = sandboxBusy || placementRequired;
-  document.querySelector("#place-back").disabled = sandboxBusy || !placementRequired;
+  document.querySelector("#push").disabled = sandboxBusy || sandboxTerminated || placementRequired;
+  document.querySelector("#place-back").disabled = sandboxBusy || sandboxTerminated || !placementRequired;
   document.querySelector("#reset-tower").disabled = sandboxBusy;
 }
 
@@ -295,6 +296,7 @@ function applyFrame(frame, onComplete) {
 
 function applyResult(message) {
   if (message.scene) applyScene(message.scene, { preserveCamera: true });
+  sandboxTerminated = message.outcome === "collapse";
   setBusy(false);
   document.querySelector("#outcome").textContent = message.outcome;
   document.querySelector("#frame-count").textContent = String(message.frame_count);
@@ -431,6 +433,7 @@ document.querySelector("#reset-tower").addEventListener("click", () => {
   if (animation) cancelAnimationFrame(animation);
   animation = null;
   framePlaying = false;
+  sandboxTerminated = false;
   setBusy(true);
   socket.send(JSON.stringify({
     type: "Reset",
