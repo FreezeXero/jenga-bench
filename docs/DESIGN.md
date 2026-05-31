@@ -19,21 +19,16 @@ There are (x, y, z) where z represents vertical space, upwards being higher.
 
 Each block is 1.5 cm tall, 2.5 cm wide, 7.5 cm long. It has the weight of 120 grams.
 
-Each visible block color indicates its current position in the tower. Color is
-not a permanent block identity. When an extracted block is placed on top, it is
-recolored for its new layer orientation and slot while its internal simulation
-ID remains unchanged.
+Each block has their own color. In the following table:
 
-The six authoritative positional colors are:
-
-| Color       | RGB Hex   |
-|-------------|-----------|
-| Red         | `#A04848` |
-| Brown       | `#7C5B3F` |
-| Lime        | `#789146` |
-| Wintergreen | `#40947F` |
-| Blue        | `#4664A5` |
-| Purple      | `#7B5498` |
+| Color       | oklch                 | RGB Hex   |
+|-------------|-----------------------|-----------|
+| Red         | oklch(0.2, 0.05, 0)   | `#A04848` |
+| Brown       | oklch(0.2, 0.05, 60)  | `#7C5B3F` |
+| Lime        | oklch(0.2, 0.05, 120) | `#789146` |
+| Wintergreen | oklch(0.2, 0.05, 180) | `#40947F` |
+| Blue        | oklch(0.2, 0.05, 240) | `#4664A5` |
+| Purple      | oklch(0.2, 0.05, 300) | `#7B5498` |
 
 #### Long Axis of a Block
 
