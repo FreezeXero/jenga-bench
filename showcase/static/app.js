@@ -18,8 +18,8 @@ let sandboxTerminated = false;
 const VISUAL_POSITION_EPSILON = .0005;
 const VISUAL_ROTATION_EPSILON = .002;
 const colorOptions = {
-  odd: ["Red", "Lime", "Blue"],
-  even: ["Wintergreen", "Purple", "Brown"],
+  odd: ["Blue", "Brown", "Red"],
+  even: ["Blue", "Brown", "Red"],
 };
 const faceOptions = { odd: ["North", "South"], even: ["East", "West"] };
 const contactOptions = [
