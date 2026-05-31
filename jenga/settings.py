@@ -48,7 +48,7 @@ class PhysicsSettings:
     angular_velocity_threshold: float = 5e-2
     ramp_duration_seconds: float = 0.2
     placement_drop_height: float = 0.005
-    max_placement_rotation_degrees: float = 5.0
+
     frame_sample_steps: int = 8
     max_tilt_degrees: float = 20.0
     push_force_multiplier: float = 1.5

@@ -22,12 +22,7 @@ const colorOptions = {
   even: ["Blue", "Brown", "Red"],
 };
 const faceOptions = { odd: ["North", "South"], even: ["East", "West"] };
-const contactOptions = [
-  "center",
-  "top-left", "top-center", "top-right",
-  "center-left", "center-right",
-  "bottom-left", "bottom-center", "bottom-right",
-];
+const contactOptions = ["center", "left", "right"];
 
 function clamp(value, low, high) {
   return Math.min(high, Math.max(low, value));
@@ -344,6 +339,7 @@ function renderScene() {
 
 function applyScene(nextScene, { preserveCamera = false } = {}) {
   scene = nextScene;
+  document.querySelector("#phase").textContent = nextScene.phase;
   document.querySelector("#tower-seed").value = String(nextScene.seed ?? 0);
   if (!preserveCamera) Object.assign(camera, nextScene.camera);
   document.querySelector("#push-layer").max = String(nextScene.max_push_layer ?? 17);
@@ -544,7 +540,6 @@ document.querySelector("#place-back").addEventListener("click", () => {
   socket.send(JSON.stringify({
     type: "PlaceBack",
     position: document.querySelector("#place-position").value,
-    rotation_degrees: Number(document.querySelector("#place-rotation").value),
   }));
 });
 document.querySelector("#reset-tower").addEventListener("click", () => {

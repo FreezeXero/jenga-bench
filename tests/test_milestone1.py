@@ -124,8 +124,7 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(variants["ChangeViewpoint"]["properties"]["distance_cm"]["minimum"], 20)
         self.assertEqual(variants["Push"]["properties"]["layer"]["minimum"], 1)
         self.assertEqual(variants["Push"]["properties"]["intensity"]["enum"], ["Gentle", "Firm", "Hard"])
-        self.assertEqual(variants["PlaceBack"]["properties"]["rotation_degrees"]["minimum"], -5)
-        self.assertEqual(variants["PlaceBack"]["properties"]["rotation_degrees"]["maximum"], 5)
+        self.assertIn("position", variants["PlaceBack"]["properties"])
         self.assertTrue(all(variant["additionalProperties"] is False for variant in variants.values()))
 
 

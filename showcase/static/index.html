@@ -89,9 +89,9 @@
             <div class="form-field full">
               <label class="form-label">Color</label>
               <div class="pill-group" id="color-pills">
-                <button class="pill active" data-val="Red">Red</button>
-                <button class="pill" data-val="Lime">Lime</button>
-                <button class="pill" data-val="Blue">Blue</button>
+                <button class="pill active" data-val="Blue">Blue</button>
+                <button class="pill" data-val="Brown">Brown</button>
+                <button class="pill" data-val="Red">Red</button>
               </div>
               <select id="push-color" class="hidden"></select>
             </div>
@@ -106,19 +106,13 @@
               <select id="push-face" class="hidden"></select>
             </div>
 
-            <!-- CONTACT as 3x3 grid -->
+            <!-- CONTACT as pills -->
             <div class="form-field full">
               <label class="form-label">Contact point</label>
-              <div class="pill-group grid-3x3" id="contact-grid">
-                <button class="pill" data-val="top-left">↖</button>
-                <button class="pill" data-val="top-center">↑</button>
-                <button class="pill" data-val="top-right">↗</button>
-                <button class="pill" data-val="center-left">←</button>
-                <button class="pill active" data-val="center">●</button>
-                <button class="pill" data-val="center-right">→</button>
-                <button class="pill" data-val="bottom-left">↙</button>
-                <button class="pill" data-val="bottom-center">↓</button>
-                <button class="pill" data-val="bottom-right">↘</button>
+              <div class="pill-group" id="contact-grid">
+                <button class="pill" data-val="left">Left</button>
+                <button class="pill active" data-val="center">Center</button>
+                <button class="pill" data-val="right">Right</button>
               </div>
               <select id="push-contact" class="hidden"></select>
             </div>
@@ -162,8 +156,7 @@
             <button id="place-back" class="btn btn-accent full-w" disabled>Place block on top</button>
             <button id="reset-tower" class="btn btn-ghost full-w">Reset tower</button>
           </div>
-          <!-- hidden rotation field still needed by app.js -->
-          <input id="place-rotation" type="number" value="0" class="hidden"><input id="tower-seed" type="number" value="0" class="hidden">
+          <input id="tower-seed" type="number" value="0" class="hidden">
         </div>
       </aside>
     </div>
@@ -272,7 +265,7 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
   function updateLayerDependentPills() {
     const layer = Number(document.getElementById('push-layer').value);
     const isOdd = layer % 2 === 1;
-    const colors = isOdd ? ['Red','Lime','Blue'] : ['Wintergreen','Purple','Brown'];
+    const colors = ['Blue','Brown','Red'];
     const faces = isOdd ? ['North','South'] : ['East','West'];
 
     const colorGroup = document.getElementById('color-pills');
@@ -307,7 +300,7 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
 
   // init contact select
   const contactSel = document.getElementById('push-contact');
-  contactSel.innerHTML = ['center','top-left','top-center','top-right','center-left','center-right','bottom-left','bottom-center','bottom-right'].map(c=>`<option>${c}</option>`).join('');
+  contactSel.innerHTML = ['center','left','right'].map(c=>`<option>${c}</option>`).join('');
   contactSel.value = 'center';
 
   // ── PHASE-AWARE UI: show push OR place-back, never both ──
@@ -357,13 +350,13 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
         steps: [
           { step:1, type:"look", action:{type:"ChangeViewpoint",azimuth:180,pitch:15,distance_cm:45}, reasoning:"Assessing tower stability from south before committing to any push.", reward:0, terminated:false },
           { step:2, type:"push", action:{type:"Push",layer:4,color:"Blue",face:"West",contact:"center",intensity:"Gentle"}, reasoning:"Layer 4 center block appears well-supported. Gentle west push should extract cleanly.", reward:0, terminated:false },
-          { step:3, type:"push", action:{type:"Push",layer:7,color:"Red",face:"East",contact:"center-right",intensity:"Firm"}, reasoning:"Layer 7 overhangs on the right. Center-right extraction redistributes load to remaining blocks.", reward:0, terminated:false },
+          { step:3, type:"push", action:{type:"Push",layer:7,color:"Red",face:"East",contact:"right",intensity:"Firm"}, reasoning:"Layer 7 overhangs on the right. Center-right extraction redistributes load to remaining blocks.", reward:0, terminated:false },
         ]
       },
       { name: "GPT-4o", score: 74.5, blocks: 12, episodes: 3, invalid: 4, color: "#5da8d6",
         steps: [
-          { step:1, type:"push", action:{type:"Push",layer:8,color:"Lime",face:"North",contact:"center",intensity:"Gentle"}, reasoning:"Starting with middle layer — lower structural risk.", reward:0, terminated:false },
-          { step:2, type:"push", action:{type:"Push",layer:3,color:"Red",face:"South",contact:"top-left",intensity:"Hard"}, reasoning:"Aggressive lower extraction attempt.", reward:-0.5, terminated:true },
+          { step:1, type:"push", action:{type:"Push",layer:8,color:"Brown",face:"North",contact:"center",intensity:"Gentle"}, reasoning:"Starting with middle layer — lower structural risk.", reward:0, terminated:false },
+          { step:2, type:"push", action:{type:"Push",layer:3,color:"Red",face:"South",contact:"left",intensity:"Hard"}, reasoning:"Aggressive lower extraction attempt.", reward:-0.5, terminated:true },
         ]
       },
       { name: "Gemini 1.5 Pro", score: 61.8, blocks: 9, episodes: 3, invalid: 6, color: "#3aba6e",

@@ -195,8 +195,7 @@ class JengaBenchEnv(BaseEnv):
             '{"type":"ChangeViewpoint","azimuth":0..360,"pitch":-90..90,'
             '"distance_cm":20..120} or '
             '{"type":"Push","layer":"1..one below current top layer","color":"Blue|Brown|Red",'
-            '"face":"North|South|East|West","contact":"top-left|top-center|top-right|'
-            'center-left|center|center-right|bottom-left|bottom-center|bottom-right",'
+            '"face":"North|South|East|West","contact":"center|left|right",'
             '"intensity":"Gentle|Firm|Hard"} or '
             '{"type":"PlaceBack","position":"Left|Middle|Right"}. '
             f"Camera: azimuth={self._camera.azimuth:.2f}, pitch={self._camera.pitch:.2f}, "

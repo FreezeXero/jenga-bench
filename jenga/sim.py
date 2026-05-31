@@ -46,17 +46,7 @@ PLACEMENT_DROP_HEIGHT = PHYSICS.placement_drop_height
 
 COLLAPSE_CONSECUTIVE_STEPS = 30
 
-CONTACTS = (
-    "top-left",
-    "top-center",
-    "top-right",
-    "center-left",
-    "center",
-    "center-right",
-    "bottom-left",
-    "bottom-center",
-    "bottom-right",
-)
+CONTACTS = ("center", "left", "right")
 VELOCITY_CAPS = dict(PHYSICS.intensities)
 PUSH_FORCE_MULTIPLIER = PHYSICS.push_force_multiplier
 VALID_FACES = {
@@ -354,7 +344,7 @@ class JengaSimulation:
             valid = ", ".join(VALID_FACES[target.spec.orientation])
             raise PushValidationError(f"face must be one of: {valid}")
         if request.contact not in CONTACTS:
-            raise PushValidationError("contact must be one of the nine 3x3 grid positions")
+            raise PushValidationError("contact must be center, left, or right")
         if request.intensity not in VELOCITY_CAPS:
             raise PushValidationError("intensity must be Gentle, Firm, or Hard")
         return target
@@ -510,9 +500,8 @@ class JengaSimulation:
         return ("Left", "Middle", "Right")[[value.name for value in names].index(slot)]
 
     def _world_contact_point(self, target: BlockBody, request: PushRequest) -> tuple[float, ...]:
-        row, column = request.contact.split("-") if "-" in request.contact else ("center", "center")
-        lateral = {"left": -1.0, "center": 0.0, "right": 1.0}[column] * (target.spec.dimensions[1] / 3)
-        vertical = {"bottom": -1.0, "center": 0.0, "top": 1.0}[row] * (BLOCK_HEIGHT / 3)
+        lateral = {"left": -1.0, "center": 0.0, "right": 1.0}[request.contact] * (target.spec.dimensions[1] / 3)
+        vertical = 0.0
         if request.face == "North":
             local = (lateral, target.spec.dimensions[0] / 2, vertical)
         elif request.face == "South":

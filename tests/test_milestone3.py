@@ -17,13 +17,13 @@ if PHYSICS_AVAILABLE:
         RAMP_STEPS,
         JengaSimulation,
         PlaceRequest,
-        PlaceValidationError,
+
         PushRequest,
         PushValidationError,
     )
     from showcase.server import app, motion_lock, preview
 
-    REQUEST = PushRequest(layer=8, color="Purple", face="East", contact="center", intensity="Gentle")
+    REQUEST = PushRequest(layer=8, color="Brown", face="East", contact="center", intensity="Gentle")
 else:
     REQUEST = None
 
@@ -76,10 +76,10 @@ class DynamicTowerTests(unittest.TestCase):
         try:
             sim.reset(seed=0)
             invalid = [
-                PushRequest(0, "Purple", "East", "center", "Gentle"),
-                PushRequest(8, "Purple", "North", "center", "Gentle"),
-                PushRequest(8, "Purple", "East", "outside", "Gentle"),
-                PushRequest(8, "Purple", "East", "center", "Extreme"),
+                PushRequest(0, "Brown", "East", "center", "Gentle"),
+                PushRequest(8, "Brown", "North", "center", "Gentle"),
+                PushRequest(8, "Brown", "East", "outside", "Gentle"),
+                PushRequest(8, "Brown", "East", "center", "Extreme"),
             ]
             for request in invalid:
                 with self.subTest(request=request), self.assertRaises(PushValidationError):
@@ -92,9 +92,9 @@ class DynamicTowerTests(unittest.TestCase):
         try:
             sim.reset(seed=0)
             self.assertEqual(sim.max_push_layer, 17)
-            sim._validate_push(PushRequest(17, "Lime", "North", "center", "Gentle"))
+            sim._validate_push(PushRequest(17, "Brown", "North", "center", "Gentle"))
             with self.assertRaises(PushValidationError):
-                sim.push(PushRequest(18, "Purple", "East", "center", "Gentle"))
+                sim.push(PushRequest(18, "Brown", "East", "center", "Gentle"))
         finally:
             sim.close()
 
@@ -105,7 +105,7 @@ class DynamicTowerTests(unittest.TestCase):
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
-            result = sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
+            result = sim.push(PushRequest(10, "Brown", "East", "center", "Hard"))
             self.assertEqual(result.outcome, "extracted")
             self.assertEqual(result.frames[-1]["phase"], "extracted")
             self.assertGreater(result.settle_steps, 0)
@@ -117,11 +117,11 @@ class DynamicTowerTests(unittest.TestCase):
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
-            extracted = sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
+            extracted = sim.push(PushRequest(10, "Brown", "East", "center", "Hard"))
             self.assertEqual(extracted.outcome, "extracted")
             self.assertEqual(len(sim.retired_body_ids), 1)
             with self.assertRaises(PushValidationError):
-                sim.push(PushRequest(8, "Purple", "East", "center", "Gentle"))
+                sim.push(PushRequest(8, "Brown", "East", "center", "Gentle"))
         finally:
             sim.close()
 
@@ -129,29 +129,17 @@ class DynamicTowerTests(unittest.TestCase):
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
-            extracted = sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
+            extracted = sim.push(PushRequest(10, "Brown", "East", "center", "Hard"))
             self.assertEqual(extracted.outcome, "extracted")
             internal_id = extracted.target_id
-            result = sim.place_back(PlaceRequest("Middle", 5))
+            result = sim.place_back(PlaceRequest("Middle"))
             self.assertEqual(result.outcome, "placed")
             placed = next(block for block in sim.blocks if block.spec.internal_id == internal_id)
             self.assertEqual(placed.spec.layer, 19)
-            self.assertEqual(placed.spec.color_name, "Lime")
-            self.assertEqual(placed.spec.yaw_degrees, 5)
+            self.assertEqual(placed.spec.color_name, "Brown")
             self.assertIsNone(sim.held_block)
             self.assertIn("place-drop", [frame["phase"] for frame in result.frames])
             self.assertIn("color", result.frames[-1]["blocks"][0])
-        finally:
-            sim.close()
-
-    def test_place_back_rejects_rotation_outside_alignment_lock(self) -> None:
-        sim = JengaSimulation()
-        try:
-            sim.reset(seed=0)
-            sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
-            with self.assertRaises(PlaceValidationError):
-                sim.place_back(PlaceRequest("Left", 5.01))
-            self.assertIsNotNone(sim.held_block)
         finally:
             sim.close()
 
@@ -291,7 +279,7 @@ class ModelPushTests(unittest.TestCase):
                 {
                     "type": "Push",
                     "layer": 8,
-                    "color": "Purple",
+                    "color": "Brown",
                     "face": "East",
                     "contact": "center",
                     "intensity": "Gentle",
@@ -313,7 +301,7 @@ class ModelPushTests(unittest.TestCase):
                 {
                     "type": "Push",
                     "layer": 8,
-                    "color": "Purple",
+                    "color": "Brown",
                     "face": "North",
                     "contact": "center",
                     "intensity": "Gentle",
@@ -332,7 +320,7 @@ class ModelPushTests(unittest.TestCase):
                 {
                     "type": "Push",
                     "layer": 10,
-                    "color": "Purple",
+                    "color": "Brown",
                     "face": "East",
                     "contact": "center",
                     "intensity": "Hard",
@@ -344,7 +332,7 @@ class ModelPushTests(unittest.TestCase):
             self.assertEqual(result.info["phase"], "place_back")
             self.assertEqual(result.info["blocks_removed"], "1")
             self.assertIn("Available placement positions: Left, Middle, Right", result.system_prompt)
-            placed = env.step({"type": "PlaceBack", "position": "Middle", "rotation_degrees": 0})
+            placed = env.step({"type": "PlaceBack", "position": "Middle"})
             self.assertFalse(placed.terminated)
             self.assertEqual(placed.info["outcome"], "placed")
             self.assertEqual(placed.info["phase"], "push")
