@@ -57,6 +57,15 @@ class InspectorStateTests(unittest.TestCase):
         self.assertEqual(first, second)
         self.assertEqual(transforms, self.state.transforms())
 
+    def test_reset_seed_replays_and_varies_tower(self) -> None:
+        first, _ = self.state.reset(seed=7)
+        transforms = self.state.transforms()
+        replay, _ = self.state.reset(seed=7)
+        self.assertEqual(first, replay)
+        self.assertEqual(transforms, self.state.transforms())
+        varied, _ = self.state.reset(seed=8)
+        self.assertNotEqual(first, varied)
+
 
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
 class InspectorRouteTests(unittest.TestCase):
@@ -112,11 +121,12 @@ class InspectorRouteTests(unittest.TestCase):
         self.assertEqual(struct.unpack(">II", response.content[16:24]), (512, 512))
 
     def test_reset_returns_local_render_scene(self) -> None:
-        response = self.client.post("/api/reset")
+        response = self.client.post("/api/reset?seed=7")
 
         self.assertEqual(response.status_code, 200)
         scene = response.json()
         self.assertEqual(scene["camera"]["azimuth"], 225.0)
+        self.assertEqual(scene["seed"], 7)
         self.assertEqual(len(scene["blocks"]), 54)
 
     def test_invalid_camera_values_are_rejected(self) -> None:

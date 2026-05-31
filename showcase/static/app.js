@@ -218,6 +218,7 @@ function renderScene() {
 
 function applyScene(nextScene) {
   scene = nextScene;
+  document.querySelector("#tower-seed").value = String(nextScene.seed ?? 0);
   Object.assign(camera, nextScene.camera);
   loadGeometry();
   updateMetadata();
@@ -315,7 +316,8 @@ viewport.addEventListener("wheel", (event) => {
 
 document.querySelector("#reset").addEventListener("click", async () => {
   try {
-    await loadScene("/api/reset", "POST");
+    const seed = Number(document.querySelector("#tower-seed").value);
+    await loadScene(`/api/reset?seed=${encodeURIComponent(seed)}`, "POST");
   } catch (error) {
     setStatus(error.message);
   }
@@ -337,7 +339,10 @@ document.querySelector("#push").addEventListener("click", () => {
 });
 document.querySelector("#reset-tower").addEventListener("click", () => {
   setBusy(true);
-  socket.send(JSON.stringify({ type: "Reset" }));
+  socket.send(JSON.stringify({
+    type: "Reset",
+    seed: Number(document.querySelector("#tower-seed").value),
+  }));
   setBusy(false);
   document.querySelector("#phase").textContent = "idle";
   document.querySelector("#outcome").textContent = "-";

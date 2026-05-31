@@ -20,6 +20,7 @@ jenga-bench/
 ├── jenga/
 │   ├── sim.py          # PyBullet tower setup, physics stepping, settling
 │   ├── tower.py        # tower/block/layer definitions, block ID scheme
+│   ├── settings.py     # adjustable generation, geometry, physics, render presets
 │   ├── camera.py       # orbital camera state, positioning
 │   ├── render.py       # RGB image capture, lighting setup
 │   ├── actions.py      # action parsing, validation, force application
@@ -41,10 +42,10 @@ jenga-bench/
 | Rolling friction   | 0.02        |
 | Spinning friction  | 0.02        |
 
-Deterministic under the action sequence. Every seed currently builds the same
-exact prebuilt tower. Seed support remains for future scenario variants.
+Deterministic under the restart seed and action sequence. Missing seeds use
+seed `0`. Adjustable presets are centralized in `jenga/settings.py`.
 
-## Block Constants (tower.py)
+## Adjustable Presets (settings.py)
 
 ```python
 BLOCK_L = 0.075   # 7.5 cm
@@ -65,10 +66,10 @@ BLOCK_MASS = 0.120  # 120 g
 - Base: black box, ~4.5cm tall (3 layers), 25×25cm
 - Floor: beneath base, for blocks to land on
 
-Use a 25×25cm base footprint. Build the same exact prebuilt tower for every
-seed: standard dimensions, exact slot positions, and zero yaw offset. In the
-static tower milestone, load this as a prebuilt snapshot without advancing
-physics. Start settling only when physical interaction actions are added.
+Use a 25×25cm base footprint. Build deterministic tower variants from the reset
+seed. Variants apply bounded per-block longitudinal offsets, per-layer shared
+spacing, a tiny cumulative x/y layer-center walk, and small per-layer yaw around
+each block's own center. Tune these ranges in `jenga/settings.py`.
 
 ## Camera (camera.py)
 

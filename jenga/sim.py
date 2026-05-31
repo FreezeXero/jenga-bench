@@ -9,7 +9,6 @@ from typing import Any, Callable
 import pybullet as bullet  # pyright: ignore[reportMissingImports]
 
 from jenga.tower import (
-    ANGULAR_DAMPING,
     BASE_CENTER_Z,
     BASE_SIZE,
     BLOCK_HEIGHT,
@@ -17,26 +16,24 @@ from jenga.tower import (
     BLOCK_MASS,
     FLOOR_CENTER_Z,
     FLOOR_SIZE,
-    LATERAL_FRICTION,
-    LINEAR_DAMPING,
-    ROLLING_FRICTION,
-    SPINNING_FRICTION,
     BlockSpec,
     Orientation,
     build_prebuilt_tower,
 )
+from jenga.settings import DEFAULT_SETTINGS
 
-TIMESTEP = 1.0 / 240.0
-SOLVER_ITERATIONS = 100
-SETTLE_TIMEOUT_SECONDS = 3.0
-VIEWER_COLLAPSE_TAIL_TIMEOUT_SECONDS = 5.0
-SETTLE_STABLE_STEPS = 30
-LINEAR_VELOCITY_THRESHOLD = 2e-3
-ANGULAR_VELOCITY_THRESHOLD = 2e-2
-RAMP_DURATION_SECONDS = 0.4
+PHYSICS = DEFAULT_SETTINGS.physics
+TIMESTEP = PHYSICS.timestep
+SOLVER_ITERATIONS = PHYSICS.solver_iterations
+SETTLE_TIMEOUT_SECONDS = PHYSICS.settle_timeout_seconds
+VIEWER_COLLAPSE_TAIL_TIMEOUT_SECONDS = PHYSICS.viewer_collapse_tail_timeout_seconds
+SETTLE_STABLE_STEPS = PHYSICS.settle_stable_steps
+LINEAR_VELOCITY_THRESHOLD = PHYSICS.linear_velocity_threshold
+ANGULAR_VELOCITY_THRESHOLD = PHYSICS.angular_velocity_threshold
+RAMP_DURATION_SECONDS = PHYSICS.ramp_duration_seconds
 RAMP_STEPS = round(RAMP_DURATION_SECONDS / TIMESTEP)
-FRAME_SAMPLE_STEPS = 8
-MAX_TILT_DEGREES = 20.0
+FRAME_SAMPLE_STEPS = PHYSICS.frame_sample_steps
+MAX_TILT_DEGREES = PHYSICS.max_tilt_degrees
 BASE_HALF_WIDTH = BASE_SIZE[0] / 2
 
 CONTACTS = (
@@ -50,7 +47,7 @@ CONTACTS = (
     "bottom-center",
     "bottom-right",
 )
-INTENSITIES = {"Gentle": 1.5, "Firm": 3, "Hard": 5}
+INTENSITIES = dict(PHYSICS.intensities)
 VALID_FACES = {
     Orientation.NORTH_SOUTH: ("North", "South"),
     Orientation.EAST_WEST: ("East", "West"),
@@ -111,9 +108,8 @@ class JengaSimulation:
             bullet.disconnect(self.client_id)
 
     def reset(self, seed: int | None) -> None:
-        del seed
         self._clear_world()
-        self._build_world(build_prebuilt_tower())
+        self._build_world(build_prebuilt_tower(seed))
         if not self._settle():
             raise TowerStabilityError("prebuilt tower failed to settle")
         self._zero_velocities()
@@ -378,7 +374,7 @@ class JengaSimulation:
             frame_callback(frame)
 
     def _configure(self) -> None:
-        bullet.setGravity(0.0, 0.0, -9.81, physicsClientId=self.client_id)
+        bullet.setGravity(*PHYSICS.gravity, physicsClientId=self.client_id)
         bullet.setTimeStep(TIMESTEP, physicsClientId=self.client_id)
         bullet.setPhysicsEngineParameter(
             fixedTimeStep=TIMESTEP,
@@ -433,7 +429,10 @@ class JengaSimulation:
             physicsClientId=self.client_id,
         )
         bullet.changeDynamics(
-            self.base_body_id, -1, lateralFriction=LATERAL_FRICTION, physicsClientId=self.client_id
+            self.base_body_id,
+            -1,
+            lateralFriction=PHYSICS.lateral_friction,
+            physicsClientId=self.client_id,
         )
         bodies = []
         for spec in specs:
@@ -451,16 +450,19 @@ class JengaSimulation:
                 baseCollisionShapeIndex=collision,
                 baseVisualShapeIndex=visual,
                 basePosition=spec.position,
+                baseOrientation=bullet.getQuaternionFromEuler(
+                    (0.0, 0.0, math.radians(spec.yaw_degrees))
+                ),
                 physicsClientId=self.client_id,
             )
             bullet.changeDynamics(
                 body_id,
                 -1,
-                lateralFriction=LATERAL_FRICTION,
-                rollingFriction=ROLLING_FRICTION,
-                spinningFriction=SPINNING_FRICTION,
-                linearDamping=LINEAR_DAMPING,
-                angularDamping=ANGULAR_DAMPING,
+                lateralFriction=PHYSICS.lateral_friction,
+                rollingFriction=PHYSICS.rolling_friction,
+                spinningFriction=PHYSICS.spinning_friction,
+                linearDamping=PHYSICS.linear_damping,
+                angularDamping=PHYSICS.angular_damping,
                 restitution=0.0,
                 physicsClientId=self.client_id,
             )

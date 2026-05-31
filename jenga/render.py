@@ -8,11 +8,13 @@ from dataclasses import dataclass
 
 import pybullet as bullet  # pyright: ignore[reportMissingImports]
 
+from jenga.settings import DEFAULT_SETTINGS
 from jenga.sim import JengaSimulation
 
-IMAGE_WIDTH = 512
-IMAGE_HEIGHT = 512
-TOWER_MIDPOINT = (0.0, 0.0, 0.135)
+RENDER = DEFAULT_SETTINGS.render
+IMAGE_WIDTH = RENDER.image_width
+IMAGE_HEIGHT = RENDER.image_height
+TOWER_MIDPOINT = RENDER.tower_midpoint
 
 
 @dataclass(frozen=True)
@@ -32,10 +34,10 @@ def render_png(simulation: JengaSimulation, camera: CameraPose) -> bytes:
         upAxisIndex=2,
     )
     projection = bullet.computeProjectionMatrixFOV(
-        fov=52.0,
+        fov=RENDER.field_of_view_degrees,
         aspect=1.0,
-        nearVal=0.02,
-        farVal=3.0,
+        nearVal=RENDER.near_plane,
+        farVal=RENDER.far_plane,
     )
     _, _, rgba, _, _ = bullet.getCameraImage(
         width=IMAGE_WIDTH,
@@ -44,11 +46,11 @@ def render_png(simulation: JengaSimulation, camera: CameraPose) -> bytes:
         projectionMatrix=projection,
         renderer=bullet.ER_TINY_RENDERER,
         shadow=1,
-        lightDirection=(3.0, -4.0, 6.0),
-        lightColor=(1.0, 1.0, 1.0),
-        lightAmbientCoeff=0.7,
-        lightDiffuseCoeff=0.6,
-        lightSpecularCoeff=0.05,
+        lightDirection=RENDER.light_direction,
+        lightColor=RENDER.light_color,
+        lightAmbientCoeff=RENDER.light_ambient_coefficient,
+        lightDiffuseCoeff=RENDER.light_diffuse_coefficient,
+        lightSpecularCoeff=RENDER.light_specular_coefficient,
         physicsClientId=simulation.client_id,
     )
     return encode_rgb_png(IMAGE_WIDTH, IMAGE_HEIGHT, rgba)

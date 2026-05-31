@@ -100,19 +100,23 @@ After every Push and PlaceBack, the simulation runs until settled or timed out.
 
 ### Deterministic Tower Generation
 
-`reset(seed)` constructs the same exact prebuilt tower for every seed. Blocks
-use the standard dimensions, exact slot positions, and zero yaw offset. Mass
-and friction remain fixed. Seed support is retained for Mesocosm protocol
-compatibility and future scenario variants. Exact repeatability is guaranteed
-within the pinned Docker runtime. Milestone 2 loads this tower as an exact
-prebuilt snapshot without advancing physics. Settling begins when Push and
-PlaceBack actions are introduced.
+`reset(seed)` constructs a prebuilt tower variant deterministically from the
+Mesocosm restart seed. A missing seed is treated as seed `0`. Each variant uses
+small configurable perturbations: individual blocks slide forward or backward,
+same-layer blocks receive a shared extra gap, layer centers make a tiny
+cumulative x/y walk so the tower can begin with a coherent lean, and each layer
+receives a small yaw applied around each block's own center. This yaw creates a
+stair-like silhouette rather than symmetrically rotating the row of blocks.
+
+All adjustable generation, geometry, physics, and rendering presets live in
+`jenga/settings.py`. Exact same-seed repeatability is guaranteed within the
+pinned Docker runtime.
 
 ## Player Loop (LLM mode)
 
 ### Reset
 
-`reset(seed, **params)` — loads the exact prebuilt tower snapshot and resets the camera. Returns the first observation.
+`reset(seed, **params)` — loads the seeded prebuilt tower snapshot and resets the camera. Returns the first observation.
 
 ### Observation
 

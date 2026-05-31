@@ -1,29 +1,27 @@
-"""Tower constants and deterministic prebuilt geometry."""
+"""Tower definitions and deterministic seeded geometry."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum
+import random
 
-BLOCK_LENGTH = 0.075
-BLOCK_WIDTH = 0.025
-BLOCK_HEIGHT = 0.015
-BLOCK_MASS = 0.120
-BLOCK_CLEARANCE = 0.0002
-LAYER_COUNT = 18
-BLOCKS_PER_LAYER = 3
+from jenga.settings import DEFAULT_SETTINGS, JengaSettings
 
-BASE_SIZE = (0.25, 0.25, 0.045)
+GEOMETRY = DEFAULT_SETTINGS.geometry
+BLOCK_LENGTH = GEOMETRY.block_length
+BLOCK_WIDTH = GEOMETRY.block_width
+BLOCK_HEIGHT = GEOMETRY.block_height
+BLOCK_MASS = GEOMETRY.block_mass
+BLOCK_CLEARANCE = GEOMETRY.block_clearance
+LAYER_COUNT = GEOMETRY.layer_count
+BLOCKS_PER_LAYER = GEOMETRY.blocks_per_layer
+
+BASE_SIZE = GEOMETRY.base_size
 BASE_CENTER_Z = -BASE_SIZE[2] / 2
 FLOOR_Z = -BASE_SIZE[2]
-FLOOR_SIZE = (4.0, 4.0, 0.01)
+FLOOR_SIZE = GEOMETRY.floor_size
 FLOOR_CENTER_Z = FLOOR_Z - FLOOR_SIZE[2] / 2
-
-LATERAL_FRICTION = 0.40
-ROLLING_FRICTION = 0.0
-SPINNING_FRICTION = 0.0
-LINEAR_DAMPING = 0.04
-ANGULAR_DAMPING = 0.04
 
 
 class Orientation(str, Enum):
@@ -68,26 +66,45 @@ class BlockSpec:
         return (*(channel / 255 for channel in self.rgb), 1.0)
 
 
-def build_prebuilt_tower() -> tuple[BlockSpec, ...]:
-    """Build the exact prebuilt tower used by every seed."""
+def build_prebuilt_tower(
+    seed: int | None = 0, settings: JengaSettings = DEFAULT_SETTINGS
+) -> tuple[BlockSpec, ...]:
+    """Build a repeatable tower variant from a restart seed."""
 
+    geometry = settings.geometry
+    randomness = settings.randomness
+    rng = random.Random(0 if seed is None else seed)
     blocks: list[BlockSpec] = []
     lower_top = 0.0
+    layer_x = 0.0
+    layer_y = 0.0
 
-    for layer_index in range(LAYER_COUNT):
+    for layer_index in range(geometry.layer_count):
         layer_number = layer_index + 1
+        if layer_index:
+            layer_x += rng.uniform(-randomness.layer_shift_step, randomness.layer_shift_step)
+            layer_y += rng.uniform(-randomness.layer_shift_step, randomness.layer_shift_step)
         orientation = (
             Orientation.NORTH_SOUTH if layer_index % 2 == 0 else Orientation.EAST_WEST
         )
         slots = NORTH_SOUTH_SLOTS if orientation == Orientation.NORTH_SOUTH else EAST_WEST_SLOTS
-        dimensions = (BLOCK_LENGTH, BLOCK_WIDTH, BLOCK_HEIGHT)
+        dimensions = (geometry.block_length, geometry.block_width, geometry.block_height)
+        extra_gap = rng.uniform(0.0, randomness.extra_layer_gap)
+        yaw_degrees = rng.uniform(-randomness.layer_yaw_degrees, randomness.layer_yaw_degrees)
         for slot_index, slot in enumerate(slots):
+            row_offset = (slot_index - 1) * (
+                geometry.block_width + geometry.block_clearance + extra_gap
+            )
+            longitudinal_offset = rng.uniform(
+                -randomness.block_longitudinal_offset,
+                randomness.block_longitudinal_offset,
+            )
             if orientation == Orientation.NORTH_SOUTH:
-                x = slot.offset
-                y = 0.0
+                x = layer_x + row_offset
+                y = layer_y + longitudinal_offset
             else:
-                x = 0.0
-                y = slot.offset
+                x = layer_x + longitudinal_offset
+                y = layer_y + row_offset
 
             blocks.append(
                 BlockSpec(
@@ -99,9 +116,9 @@ def build_prebuilt_tower() -> tuple[BlockSpec, ...]:
                     rgb=slot.rgb,
                     dimensions=dimensions,
                     position=(x, y, lower_top + dimensions[2] / 2),
-                    yaw_degrees=0.0,
+                    yaw_degrees=yaw_degrees,
                 )
             )
-        lower_top += BLOCK_HEIGHT
+        lower_top += geometry.block_height
 
     return tuple(blocks)

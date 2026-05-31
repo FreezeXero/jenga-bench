@@ -21,8 +21,9 @@ if PHYSICS_AVAILABLE:
     )
     from showcase.server import app, motion_lock, preview
 
-
-REQUEST = PushRequest(layer=8, color="Purple", face="East", contact="center", intensity="Gentle")
+    REQUEST = PushRequest(layer=8, color="Purple", face="East", contact="center", intensity="Gentle")
+else:
+    REQUEST = None
 
 
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
@@ -44,7 +45,7 @@ class DynamicTowerTests(unittest.TestCase):
         second = JengaSimulation()
         try:
             first.reset(seed=0)
-            second.reset(seed=999)
+            second.reset(seed=0)
             first_result = first.push(REQUEST)
             second_result = second.push(REQUEST)
             self.assertEqual(first_result, second_result)
@@ -260,8 +261,10 @@ class SandboxWebSocketTests(unittest.TestCase):
 
     def test_websocket_streams_frames_and_result(self) -> None:
         with self.client.websocket_connect("/ws/sandbox") as websocket:
-            websocket.send_json({"type": "Reset"})
-            self.assertEqual(websocket.receive_json()["type"], "scene")
+            websocket.send_json({"type": "Reset", "seed": 7})
+            scene = websocket.receive_json()
+            self.assertEqual(scene["type"], "scene")
+            self.assertEqual(scene["scene"]["seed"], 7)
             websocket.send_json({"type": "Push", **REQUEST.__dict__})
             messages = []
             while True:

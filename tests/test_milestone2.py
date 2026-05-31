@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import math
 import struct
 import unittest
 
@@ -20,6 +21,7 @@ from jenga.tower import (
     Orientation,
     build_prebuilt_tower,
 )
+from jenga.settings import DEFAULT_SETTINGS
 
 PHYSICS_AVAILABLE = bool(importlib.util.find_spec("pybullet"))
 
@@ -31,7 +33,7 @@ if PHYSICS_AVAILABLE:
 
 class TowerSpecificationTests(unittest.TestCase):
     def test_prebuilt_tower_contains_expected_layers_slots_and_colors(self) -> None:
-        specs = build_prebuilt_tower()
+        specs = build_prebuilt_tower(seed=0)
 
         self.assertEqual(len(specs), LAYER_COUNT * BLOCKS_PER_LAYER)
         self.assertEqual(len({spec.internal_id for spec in specs}), len(specs))
@@ -49,20 +51,31 @@ class TowerSpecificationTests(unittest.TestCase):
             self.assertEqual([block.slot for block in blocks], [slot.name for slot in expected_slots])
             self.assertEqual([block.rgb for block in blocks], [slot.rgb for slot in expected_slots])
 
-    def test_prebuilt_tower_uses_exact_geometry(self) -> None:
-        specs = build_prebuilt_tower()
+    def test_seeded_tower_geometry_stays_within_configured_bounds(self) -> None:
+        specs = build_prebuilt_tower(seed=7)
+        randomness = DEFAULT_SETTINGS.randomness
 
         for spec in specs:
             self.assertEqual(spec.dimensions, (BLOCK_LENGTH, BLOCK_WIDTH, BLOCK_HEIGHT))
-            self.assertEqual(spec.yaw_degrees, 0.0)
-            if spec.orientation == Orientation.NORTH_SOUTH:
-                expected_offset = next(slot.offset for slot in NORTH_SOUTH_SLOTS if slot.name == spec.slot)
-                self.assertEqual(spec.position[0], expected_offset)
-                self.assertEqual(spec.position[1], 0.0)
+            self.assertLessEqual(abs(spec.yaw_degrees), randomness.layer_yaw_degrees)
+        for layer in range(1, LAYER_COUNT + 1):
+            blocks = [spec for spec in specs if spec.layer == layer]
+            self.assertEqual(len({spec.yaw_degrees for spec in blocks}), 1)
+            if blocks[0].orientation == Orientation.NORTH_SOUTH:
+                gaps = [blocks[index + 1].position[0] - blocks[index].position[0] for index in range(2)]
             else:
-                expected_offset = next(slot.offset for slot in EAST_WEST_SLOTS if slot.name == spec.slot)
-                self.assertEqual(spec.position[0], 0.0)
-                self.assertEqual(spec.position[1], expected_offset)
+                gaps = [blocks[index + 1].position[1] - blocks[index].position[1] for index in range(2)]
+            self.assertTrue(math.isclose(gaps[0], gaps[1]))
+            self.assertGreaterEqual(gaps[0], BLOCK_WIDTH + DEFAULT_SETTINGS.geometry.block_clearance)
+            self.assertLessEqual(
+                gaps[0],
+                BLOCK_WIDTH + DEFAULT_SETTINGS.geometry.block_clearance + randomness.extra_layer_gap,
+            )
+
+    def test_seeded_generation_is_repeatable_and_varies_across_seeds(self) -> None:
+        self.assertEqual(build_prebuilt_tower(seed=19), build_prebuilt_tower(seed=19))
+        self.assertEqual(build_prebuilt_tower(seed=None), build_prebuilt_tower(seed=0))
+        self.assertNotEqual(build_prebuilt_tower(seed=1), build_prebuilt_tower(seed=999))
 
     def test_base_and_floor_coordinates(self) -> None:
         self.assertEqual(BASE_CENTER_Z + BASE_SIZE[2] / 2, 0.0)
@@ -72,6 +85,21 @@ class TowerSpecificationTests(unittest.TestCase):
 
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
 class SimulationTests(unittest.TestCase):
+    def test_representative_seeded_towers_settle_and_remain_upright(self) -> None:
+        for seed in (0, 1, 7, 19, 999):
+            with self.subTest(seed=seed):
+                sim = JengaSimulation()
+                try:
+                    sim.reset(seed=seed)
+                    self.assertLessEqual(sim.settle_steps, 720)
+                    for _ in range(720):
+                        import pybullet as bullet
+
+                        bullet.stepSimulation(physicsClientId=sim.client_id)
+                    self.assertFalse(sim._has_obvious_collapse(target_id=-1))
+                finally:
+                    sim.close()
+
     def test_prebuilt_tower_settles_dynamically(self) -> None:
         sim = JengaSimulation()
         try:
@@ -81,14 +109,44 @@ class SimulationTests(unittest.TestCase):
         finally:
             sim.close()
 
-    def test_different_seeds_have_identical_transforms_and_png(self) -> None:
+    def test_generated_yaw_reaches_pybullet_transforms(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=7)
+            self.assertTrue(any(abs(rotation[2]) > 1e-6 for _, _, rotation in sim.transforms()))
+        finally:
+            sim.close()
+
+    def test_same_seed_has_identical_transforms_and_png(self) -> None:
+        first = JengaBenchEnv()
+        second = JengaBenchEnv()
+        try:
+            first_image = first.reset(seed=19)["data"]
+            second_image = second.reset(seed=19)["data"]
+            self.assertEqual(first._simulation.transforms(), second._simulation.transforms())
+            self.assertEqual(first_image, second_image)
+        finally:
+            first.close()
+            second.close()
+
+    def test_different_seeds_vary_transforms_and_png(self) -> None:
         first = JengaBenchEnv()
         second = JengaBenchEnv()
         try:
             first_image = first.reset(seed=1)["data"]
             second_image = second.reset(seed=999)["data"]
+            self.assertNotEqual(first._simulation.transforms(), second._simulation.transforms())
+            self.assertNotEqual(first_image, second_image)
+        finally:
+            first.close()
+            second.close()
+
+    def test_none_seed_matches_zero_seed(self) -> None:
+        first = JengaBenchEnv()
+        second = JengaBenchEnv()
+        try:
+            self.assertEqual(first.reset(seed=None), second.reset(seed=0))
             self.assertEqual(first._simulation.transforms(), second._simulation.transforms())
-            self.assertEqual(first_image, second_image)
         finally:
             first.close()
             second.close()

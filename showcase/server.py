@@ -40,6 +40,7 @@ class PreviewState:
         self._simulation: JengaSimulation | None = None
         self._camera = DEFAULT_CAMERA
         self._push_lock = Lock()
+        self._seed = 0
 
     @property
     def camera(self) -> CameraPose:
@@ -52,14 +53,14 @@ class PreviewState:
             assert self._simulation is not None
             return self._simulation.transforms()
 
-    def reset(self) -> tuple[bytes, CameraPose]:
+    def reset(self, seed: int = 0) -> tuple[bytes, CameraPose]:
         with self._lock:
-            self._reset_locked()
+            self._reset_locked(seed)
             return self._render_locked(), self._camera
 
-    def reset_scene(self) -> dict[str, object]:
+    def reset_scene(self, seed: int = 0) -> dict[str, object]:
         with self._lock:
-            self._reset_locked()
+            self._reset_locked(seed)
             return self.scene()
 
     def frame(self, camera: CameraPose) -> tuple[bytes, CameraPose]:
@@ -95,6 +96,7 @@ class PreviewState:
                     }
                 )
             return {
+                "seed": self._seed,
                 "camera": _camera_payload(self._camera),
                 "target": (0.0, 0.0, 0.135),
                 "base": {
@@ -133,12 +135,13 @@ class PreviewState:
     def _ensure_simulation(self) -> None:
         if self._simulation is None:
             self._simulation = JengaSimulation()
-            self._simulation.reset(seed=0)
+            self._simulation.reset(seed=self._seed)
 
-    def _reset_locked(self) -> None:
+    def _reset_locked(self, seed: int) -> None:
         self.close()
+        self._seed = seed
         self._simulation = JengaSimulation()
-        self._simulation.reset(seed=0)
+        self._simulation.reset(seed=seed)
         self._camera = DEFAULT_CAMERA
 
     def _render_locked(self) -> bytes:
@@ -211,8 +214,8 @@ def health() -> dict[str, str]:
 
 
 @app.post("/api/reset")
-def reset() -> dict[str, object]:
-    return preview.reset_scene()
+def reset(seed: int = 0) -> dict[str, object]:
+    return preview.reset_scene(seed)
 
 
 @app.get("/api/state")
@@ -242,7 +245,7 @@ async def sandbox(websocket: WebSocket) -> None:
                 if motion_lock.locked():
                     await websocket.send_json({"type": "error", "message": "busy"})
                     continue
-                scene = await asyncio.to_thread(preview.reset_scene)
+                scene = await asyncio.to_thread(preview.reset_scene, int(command.get("seed", 0)))
                 await websocket.send_json({"type": "scene", "scene": scene})
                 continue
             if command.get("type") != "Push":
