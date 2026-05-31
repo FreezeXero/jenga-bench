@@ -85,7 +85,72 @@ class DynamicTowerTests(unittest.TestCase):
             sim.close()
 
     def test_force_levels_are_locked(self) -> None:
-        self.assertEqual(INTENSITIES, {"Gentle": 0.15, "Firm": 0.60, "Hard": 1.20})
+        self.assertEqual(INTENSITIES, {"Gentle": 1.5, "Firm": 3, "Hard": 5})
+
+    def test_successful_extraction_wins_before_collapse_timeout(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            result = sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
+            self.assertEqual(result.outcome, "extracted")
+            self.assertEqual(result.frames[-1]["phase"], "extracted")
+            self.assertGreater(result.settle_steps, 0)
+            self.assertIn("settle", [frame["phase"] for frame in result.frames])
+        finally:
+            sim.close()
+
+    def test_extracted_block_does_not_collapse_the_next_push(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            extracted = sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
+            self.assertEqual(extracted.outcome, "extracted")
+            self.assertEqual(len(sim.retired_body_ids), 1)
+            result = sim.push(PushRequest(8, "Purple", "East", "center", "Gentle"))
+            self.assertEqual(result.outcome, "settled")
+        finally:
+            sim.close()
+
+    def test_push_emits_frames_during_simulation(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            emitted = []
+            result = sim.push(REQUEST, frame_callback=emitted.append)
+            self.assertEqual(tuple(emitted), result.frames)
+            self.assertEqual(emitted[0]["phase"], "initial")
+            self.assertEqual(emitted[-1]["phase"], result.outcome)
+        finally:
+            sim.close()
+
+    def test_viewer_collapse_tail_does_not_slow_scored_pushes(self) -> None:
+        scored = JengaSimulation()
+        viewer = JengaSimulation()
+        try:
+            scored.reset(seed=0)
+            viewer.reset(seed=0)
+            for sim in (scored, viewer):
+                target = sim._validate_push(REQUEST)
+                other = next(block for block in sim.blocks if block.body_id != target.body_id)
+                position, rotation = bullet.getBasePositionAndOrientation(
+                    other.body_id, physicsClientId=sim.client_id
+                )
+                bullet.resetBasePositionAndOrientation(
+                    other.body_id,
+                    (position[0], position[1], -0.01),
+                    rotation,
+                    physicsClientId=sim.client_id,
+                )
+            scored_result = scored.push(REQUEST)
+            viewer_result = viewer.push(REQUEST, continue_after_collapse=True)
+            self.assertEqual(scored_result.outcome, "collapse")
+            self.assertEqual(viewer_result.outcome, "collapse")
+            self.assertNotIn("collapse-settle", [frame["phase"] for frame in scored_result.frames])
+            self.assertIn("collapse-settle", [frame["phase"] for frame in viewer_result.frames])
+            self.assertGreater(len(viewer_result.frames), len(scored_result.frames))
+        finally:
+            scored.close()
+            viewer.close()
 
     def test_obvious_collapse_and_extraction_geometry(self) -> None:
         sim = JengaSimulation()
@@ -158,6 +223,27 @@ class ModelPushTests(unittest.TestCase):
             )
             self.assertEqual(result.reward, -0.5)
             self.assertFalse(result.terminated)
+        finally:
+            env.close()
+
+    def test_model_extraction_terminates_as_slice_success(self) -> None:
+        env = JengaBenchEnv()
+        try:
+            env.reset(seed=0)
+            result = env.step(
+                {
+                    "type": "Push",
+                    "layer": 10,
+                    "color": "Purple",
+                    "face": "East",
+                    "contact": "center",
+                    "intensity": "Hard",
+                }
+            )
+            self.assertTrue(result.terminated)
+            self.assertEqual(result.reward, 0.0)
+            self.assertEqual(result.info["outcome"], "extracted")
+            self.assertEqual(result.info["termination_reason"], "extracted")
         finally:
             env.close()
 

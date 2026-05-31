@@ -38,10 +38,6 @@ class SlotDefinition:
     color_name: str
     rgb: tuple[int, int, int]
 
-    @property
-    def rgba(self) -> tuple[float, float, float, float]:
-        return (*(channel / 255 for channel in self.rgb), 1.0)
-
 
 NORTH_SOUTH_SLOTS = (
     SlotDefinition("East", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Red", (160, 72, 72)),

@@ -6,7 +6,7 @@ import struct
 import zlib
 from dataclasses import dataclass
 
-import pybullet as bullet
+import pybullet as bullet  # pyright: ignore[reportMissingImports]
 
 from jenga.sim import JengaSimulation
 

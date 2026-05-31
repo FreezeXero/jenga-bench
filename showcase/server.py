@@ -5,8 +5,10 @@ from __future__ import annotations
 import atexit
 import asyncio
 import math
+import time
 from pathlib import Path
 from threading import Lock, RLock
+from typing import Callable
 
 import uvicorn
 from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
@@ -103,14 +105,22 @@ class PreviewState:
                 "blocks": blocks,
             }
 
-    def push(self, request: PushRequest) -> tuple[dict[str, object], ...]:
+    def push(
+        self,
+        request: PushRequest,
+        frame_callback: Callable[[dict[str, object]], None] | None = None,
+    ) -> tuple[dict[str, object], ...]:
         if not self._push_lock.acquire(blocking=False):
             raise RuntimeError("busy")
         try:
             with self._lock:
                 self._ensure_simulation()
                 assert self._simulation is not None
-                return self._simulation.push(request).frames
+                return self._simulation.push(
+                    request,
+                    frame_callback=frame_callback,
+                    continue_after_collapse=True,
+                ).frames
         finally:
             self._push_lock.release()
 
@@ -243,22 +253,37 @@ async def sandbox(websocket: WebSocket) -> None:
                 continue
             try:
                 try:
-                    frames = await asyncio.to_thread(
-                        preview.push,
-                        PushRequest(
-                            layer=command.get("layer"),
-                            color=command.get("color"),
-                            face=command.get("face"),
-                            contact=command.get("contact"),
-                            intensity=command.get("intensity"),
-                        ),
+                    queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+                    loop = asyncio.get_running_loop()
+
+                    def emit(frame_payload: dict[str, object]) -> None:
+                        loop.call_soon_threadsafe(queue.put_nowait, frame_payload)
+                        time.sleep(0.001)
+
+                    push_task = asyncio.create_task(
+                        asyncio.to_thread(
+                            preview.push,
+                            PushRequest(
+                                layer=command.get("layer"),
+                                color=command.get("color"),
+                                face=command.get("face"),
+                                contact=command.get("contact"),
+                                intensity=command.get("intensity"),
+                            ),
+                            emit,
+                        )
                     )
+                    while not push_task.done() or not queue.empty():
+                        try:
+                            frame_payload = await asyncio.wait_for(queue.get(), timeout=0.05)
+                        except asyncio.TimeoutError:
+                            continue
+                        await websocket.send_json(frame_payload)
+                        await asyncio.sleep(1.0 / 30.0)
+                    frames = await push_task
                 except (PushValidationError, RuntimeError) as exc:
                     await websocket.send_json({"type": "error", "message": str(exc)})
                     continue
-                for frame_payload in frames:
-                    await websocket.send_json(frame_payload)
-                    await asyncio.sleep(1.0 / 30.0)
                 await websocket.send_json(
                     {
                         "type": "result",

@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import math
-from typing import Any
+from typing import Any, Callable
 
-import pybullet as bullet
+import pybullet as bullet  # pyright: ignore[reportMissingImports]
 
 from jenga.tower import (
     ANGULAR_DAMPING,
@@ -29,6 +29,7 @@ from jenga.tower import (
 TIMESTEP = 1.0 / 240.0
 SOLVER_ITERATIONS = 100
 SETTLE_TIMEOUT_SECONDS = 3.0
+VIEWER_COLLAPSE_TAIL_TIMEOUT_SECONDS = 5.0
 SETTLE_STABLE_STEPS = 30
 LINEAR_VELOCITY_THRESHOLD = 2e-3
 ANGULAR_VELOCITY_THRESHOLD = 2e-2
@@ -98,6 +99,7 @@ class JengaSimulation:
         self.floor_body_id: int | None = None
         self.settle_steps: int | None = None
         self.last_frames: tuple[dict[str, Any], ...] = ()
+        self.retired_body_ids: set[int] = set()
         self._configure()
 
     @property
@@ -138,18 +140,26 @@ class JengaSimulation:
             ],
         }
 
-    def push(self, request: PushRequest) -> PushResult:
+    def push(
+        self,
+        request: PushRequest,
+        frame_callback: Callable[[dict[str, Any]], None] | None = None,
+        *,
+        continue_after_collapse: bool = False,
+    ) -> PushResult:
         target = self._validate_push(request)
         initial_position, _ = bullet.getBasePositionAndOrientation(
             target.body_id, physicsClientId=self.client_id
         )
         frames = [self.frame(sequence=0, sim_time=0.0, phase="initial")]
+        self._emit_frame(frames[-1], frame_callback)
         sequence = 0
         simulated_steps = 0
 
         direction = self._force_direction(request.face)
         contact = self._world_contact_point(target, request)
         peak_force = INTENSITIES[request.intensity]
+        extracted = False
         for ramp_step in range(1, RAMP_STEPS + 1):
             multiplier = math.sin(math.pi * ramp_step / (RAMP_STEPS + 1))
             force = tuple(value * peak_force * multiplier for value in direction)
@@ -166,20 +176,40 @@ class JengaSimulation:
             if ramp_step % FRAME_SAMPLE_STEPS == 0:
                 sequence += 1
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="ramp"))
+                self._emit_frame(frames[-1], frame_callback)
+            extracted = extracted or self._is_extracted(target, initial_position, direction)
             if self._has_obvious_collapse(target.body_id):
-                return self._finish_push("collapse", target, frames, sequence, simulated_steps, 0)
+                if continue_after_collapse:
+                    sequence, simulated_steps = self._settle_collapse_tail(
+                        frames, sequence, simulated_steps, frame_callback
+                    )
+                return self._finish_push(
+                    "collapse", target, frames, sequence, simulated_steps, 0, frame_callback
+                )
 
-        settled, sequence, simulated_steps, settle_steps = self._settle_with_frames(
-            frames, sequence, simulated_steps, target.body_id
+        settled, extracted, sequence, simulated_steps, settle_steps = self._settle_with_frames(
+            frames,
+            sequence,
+            simulated_steps,
+            target,
+            initial_position,
+            direction,
+            extracted,
+            frame_callback,
         )
-        if not settled or self._has_obvious_collapse(target.body_id):
-            outcome = "collapse"
-        elif self._is_extracted(target, initial_position, direction):
+        if extracted:
             outcome = "extracted"
+        elif not settled or self._has_obvious_collapse(target.body_id):
+            outcome = "collapse"
         else:
             outcome = "settled"
-        self._zero_velocities()
-        return self._finish_push(outcome, target, frames, sequence, simulated_steps, settle_steps)
+        if outcome == "collapse" and continue_after_collapse:
+            sequence, simulated_steps = self._settle_collapse_tail(
+                frames, sequence, simulated_steps, frame_callback
+            )
+        return self._finish_push(
+            outcome, target, frames, sequence, simulated_steps, settle_steps, frame_callback
+        )
 
     def _finish_push(
         self,
@@ -189,15 +219,15 @@ class JengaSimulation:
         sequence: int,
         simulated_steps: int,
         settle_steps: int,
+        frame_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> PushResult:
         self._zero_velocities()
         final_sequence = sequence + 1
         final = self.frame(sequence=final_sequence, sim_time=simulated_steps * TIMESTEP, phase=outcome)
-        if frames[-1]["blocks"] == final["blocks"]:
-            final["sequence"] = frames[-1]["sequence"]
-            frames[-1] = final
-        else:
-            frames.append(final)
+        frames.append(final)
+        self._emit_frame(final, frame_callback)
+        if outcome == "extracted":
+            self.retired_body_ids.add(target.body_id)
         self.last_frames = tuple(frames)
         return PushResult(
             outcome=outcome,
@@ -214,7 +244,9 @@ class JengaSimulation:
             (
                 block
                 for block in self.blocks
-                if block.spec.layer == request.layer and block.spec.color_name == request.color
+                if block.body_id not in self.retired_body_ids
+                and block.spec.layer == request.layer
+                and block.spec.color_name == request.color
             ),
             None,
         )
@@ -263,7 +295,7 @@ class JengaSimulation:
 
     def _has_obvious_collapse(self, target_id: int) -> bool:
         for block in self.blocks:
-            if block.body_id == target_id:
+            if block.body_id == target_id or block.body_id in self.retired_body_ids:
                 continue
             position, rotation = bullet.getBasePositionAndOrientation(
                 block.body_id, physicsClientId=self.client_id
@@ -282,8 +314,12 @@ class JengaSimulation:
         frames: list[dict[str, Any]],
         sequence: int,
         simulated_steps: int,
-        target_id: int,
-    ) -> tuple[bool, int, int, int]:
+        target: BlockBody,
+        initial_position: tuple[float, ...],
+        direction: tuple[float, ...],
+        extracted: bool,
+        frame_callback: Callable[[dict[str, Any]], None] | None,
+    ) -> tuple[bool, bool, int, int, int]:
         stable_steps = 0
         timeout_steps = round(SETTLE_TIMEOUT_SECONDS / TIMESTEP)
         for settle_step in range(1, timeout_steps + 1):
@@ -292,15 +328,54 @@ class JengaSimulation:
             if settle_step % FRAME_SAMPLE_STEPS == 0:
                 sequence += 1
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="settle"))
-            if self._has_obvious_collapse(target_id):
-                return False, sequence, simulated_steps, settle_step
+                self._emit_frame(frames[-1], frame_callback)
+            extracted = extracted or self._is_extracted(target, initial_position, direction)
+            if self._has_obvious_collapse(target.body_id):
+                return False, extracted, sequence, simulated_steps, settle_step
+            if self._all_blocks_below_velocity_thresholds(ignored_body_id=target.body_id if extracted else None):
+                stable_steps += 1
+                if stable_steps >= SETTLE_STABLE_STEPS:
+                    return True, extracted, sequence, simulated_steps, settle_step
+            else:
+                stable_steps = 0
+        return False, extracted, sequence, simulated_steps, timeout_steps
+
+    def _settle_collapse_tail(
+        self,
+        frames: list[dict[str, Any]],
+        sequence: int,
+        simulated_steps: int,
+        frame_callback: Callable[[dict[str, Any]], None] | None,
+    ) -> tuple[int, int]:
+        stable_steps = 0
+        timeout_steps = round(VIEWER_COLLAPSE_TAIL_TIMEOUT_SECONDS / TIMESTEP)
+        for tail_step in range(1, timeout_steps + 1):
+            bullet.stepSimulation(physicsClientId=self.client_id)
+            simulated_steps += 1
+            if tail_step % FRAME_SAMPLE_STEPS == 0:
+                sequence += 1
+                frames.append(
+                    self.frame(
+                        sequence=sequence,
+                        sim_time=simulated_steps * TIMESTEP,
+                        phase="collapse-settle",
+                    )
+                )
+                self._emit_frame(frames[-1], frame_callback)
             if self._all_blocks_below_velocity_thresholds():
                 stable_steps += 1
                 if stable_steps >= SETTLE_STABLE_STEPS:
-                    return True, sequence, simulated_steps, settle_step
+                    break
             else:
                 stable_steps = 0
-        return False, sequence, simulated_steps, timeout_steps
+        return sequence, simulated_steps
+
+    @staticmethod
+    def _emit_frame(
+        frame: dict[str, Any], frame_callback: Callable[[dict[str, Any]], None] | None
+    ) -> None:
+        if frame_callback is not None:
+            frame_callback(frame)
 
     def _configure(self) -> None:
         bullet.setGravity(0.0, 0.0, -9.81, physicsClientId=self.client_id)
@@ -320,6 +395,7 @@ class JengaSimulation:
         self.floor_body_id = None
         self.settle_steps = None
         self.last_frames = ()
+        self.retired_body_ids = set()
 
     def _build_world(self, specs: tuple[BlockSpec, ...]) -> None:
         floor_half = tuple(value / 2 for value in FLOOR_SIZE)
@@ -408,6 +484,8 @@ class JengaSimulation:
 
     def _zero_velocities(self) -> None:
         for block in self.blocks:
+            if block.body_id in self.retired_body_ids:
+                continue
             bullet.resetBaseVelocity(
                 block.body_id,
                 linearVelocity=(0.0, 0.0, 0.0),
@@ -415,8 +493,10 @@ class JengaSimulation:
                 physicsClientId=self.client_id,
             )
 
-    def _all_blocks_below_velocity_thresholds(self) -> bool:
+    def _all_blocks_below_velocity_thresholds(self, *, ignored_body_id: int | None = None) -> bool:
         for block in self.blocks:
+            if block.body_id == ignored_body_id or block.body_id in self.retired_body_ids:
+                continue
             linear, angular = bullet.getBaseVelocity(block.body_id, physicsClientId=self.client_id)
             if max(abs(value) for value in linear) >= LINEAR_VELOCITY_THRESHOLD:
                 return False
