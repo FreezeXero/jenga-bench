@@ -340,7 +340,7 @@ function connectSandbox() {
     console.log("[ws]", message.type, message);
     if (message.type === "frame") {
       const previous = frameQueue[frameQueue.length - 1];
-      if (message.phase === "collapse-settle" && framesVisuallyMatch(previous, message)) {
+      if (message.phase === "collapse" && framesVisuallyMatch(previous, message)) {
         frameQueue[frameQueue.length - 1] = message;
       } else {
         frameQueue.push(message);

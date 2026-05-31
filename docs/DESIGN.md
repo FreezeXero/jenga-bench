@@ -89,9 +89,9 @@ After every Push and PlaceBack, the simulation runs until settled or timed out.
 
 | Parameter       | Value                                  |
 |-----------------|----------------------------------------|
-| Settle check    | all blocks below 1e-3 m/s linear and 1e-3 rad/s angular velocity for 30 consecutive steps |
-| Settle timeout  | 3 seconds sim-time                     |
-| Timeout exceeded | treated as collapse                   |
+| Settle check    | all blocks below 5e-3 m/s linear and 5e-2 rad/s angular velocity for 30 consecutive steps |
+| Settle timeout  | 10 seconds sim-time                    |
+| Timeout exceeded | check final state — collapse only if collapse conditions are met, otherwise settled |
 
 ### Deterministic Tower Generation
 
@@ -151,7 +151,8 @@ Sets a new camera state. Tower state unchanged. Reward = 0.
 
 | Rule      | Description                                                                                              |
 |-----------|----------------------------------------------------------------------------------------------------------|
-| Effect    | applies a bell-curve-ramped axial force over a fixed duration (same duration for all intensities, only magnitude varies), then settles. |
+| Effect    | applies a bell-curve-ramped force scaled to the block's load (weight from above), capped at a velocity threshold per intensity (Gentle = slow probe, Firm = deliberate push, Hard = aggressive shove), then settles. |
+| Extraction | a block is considered extracted when it has no contact with any other block in the tower. |
 
 #### Place Back
 
@@ -197,13 +198,20 @@ A block is considered removed when it has zero contacts with any other body (blo
 
 ### Collapse
 
-A non-pushed block loses contact with something it should be in contact with after settling. Something fell that the agent didn't intend to move.
+Collapse is checked continuously during both the push ramp and settling phases. Two conditions:
+
+| Condition | Detection |
+|-----------|-----------|
+| Ground contact | any non-layer-1 block touches the base or floor — instant collapse |
+| Lost vertical contact | a non-target block loses a vertical contact (contact normal mostly up/down) it had before the push, for 30 consecutive simulation steps |
+
+Before each push, the simulation snapshots which blocks are vertically in contact with which (excluding the target block). During the push and settle, if any non-target block loses one of those vertical contacts for 30 consecutive steps, it means something fell that the agent didn't intend to move.
 
 ### Episode Termination (done = true)
 
 | Condition    | Description                                                              |
 |--------------|--------------------------------------------------------------------------|
-| Collapse     | a non-pushed block loses a required contact                              |
+| Collapse     | ground contact or lost vertical contact (see above)                      |
 | Viewpoint timeout | 10 consecutive ChangeViewpoint actions without a Push or PlaceBack. The counter resets after Push or PlaceBack. |
 | Perfect completion | 98 successful extractions |
 

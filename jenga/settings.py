@@ -36,14 +36,14 @@ class PhysicsSettings:
     spinning_friction: float = 0.0
     linear_damping: float = 0.04
     angular_damping: float = 0.04
-    settle_timeout_seconds: float = 3.0
+    settle_timeout_seconds: float = 10.0
     viewer_collapse_tail_timeout_seconds: float = 5.0
     viewer_collapse_linear_velocity_threshold: float = 0.02
     viewer_collapse_angular_velocity_threshold: float = 0.15
     viewer_collapse_stable_steps: int = 8
     settle_stable_steps: int = 30
-    linear_velocity_threshold: float = 2e-3
-    angular_velocity_threshold: float = 2e-2
+    linear_velocity_threshold: float = 5e-3
+    angular_velocity_threshold: float = 5e-2
     ramp_duration_seconds: float = 0.2
     placement_drop_height: float = 0.005
     max_placement_rotation_degrees: float = 5.0

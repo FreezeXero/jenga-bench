@@ -42,10 +42,9 @@ RAMP_DURATION_SECONDS = PHYSICS.ramp_duration_seconds
 RAMP_STEPS = round(RAMP_DURATION_SECONDS / TIMESTEP)
 LATERAL_FRICTION = PHYSICS.lateral_friction
 FRAME_SAMPLE_STEPS = PHYSICS.frame_sample_steps
-MAX_TILT_DEGREES = PHYSICS.max_tilt_degrees
-BASE_HALF_WIDTH = BASE_SIZE[0] / 2
 PLACEMENT_DROP_HEIGHT = PHYSICS.placement_drop_height
 MAX_PLACEMENT_ROTATION_DEGREES = PHYSICS.max_placement_rotation_degrees
+COLLAPSE_CONSECUTIVE_STEPS = 30
 
 CONTACTS = (
     "top-left",
@@ -223,9 +222,6 @@ class JengaSimulation:
         if self.held_block is not None:
             raise PushValidationError("PlaceBack is required before another Push")
         target = self._validate_push(request)
-        initial_position, _ = bullet.getBasePositionAndOrientation(
-            target.body_id, physicsClientId=self.client_id
-        )
         frames = [self.frame(sequence=0, sim_time=0.0, phase="initial")]
         self._emit_frame(frames[-1], frame_callback)
         sequence = 0
@@ -238,6 +234,8 @@ class JengaSimulation:
         peak_force = breakaway * PUSH_FORCE_MULTIPLIER
         velocity_cap = VELOCITY_CAPS[request.intensity]
         logger.debug("push load=%.3fN breakaway=%.3fN peak=%.3fN cap=%.2fm/s", load, breakaway, peak_force, velocity_cap)
+        contact_snapshot = self._snapshot_vertical_contacts(target.body_id)
+        collapse_lost_steps: dict[int, int] = {}
         extracted = False
         for ramp_step in range(1, RAMP_STEPS + 1):
             speed = sum(v ** 2 for v in bullet.getBaseVelocity(target.body_id, physicsClientId=self.client_id)[0]) ** 0.5
@@ -261,8 +259,8 @@ class JengaSimulation:
                 sequence += 1
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="ramp"))
                 self._emit_frame(frames[-1], frame_callback)
-            extracted = extracted or self._is_extracted(target, initial_position, direction)
-            if self._has_obvious_collapse(target.body_id, include_tilt=False):
+            extracted = extracted or self._is_extracted(target)
+            if self._check_collapse(contact_snapshot, collapse_lost_steps):
                 if continue_after_collapse:
                     sequence, simulated_steps = self._settle_collapse_tail(
                         frames, sequence, simulated_steps, frame_callback
@@ -276,13 +274,19 @@ class JengaSimulation:
             sequence,
             simulated_steps,
             target,
-            initial_position,
-            direction,
             extracted,
+            contact_snapshot,
+            collapse_lost_steps,
             frame_callback,
         )
-        if not settled or self._has_obvious_collapse(target.body_id):
-            outcome = "collapse"
+        if not settled:
+            logger.debug("failed to settle in time — checking final state")
+            if self._check_collapse(contact_snapshot, collapse_lost_steps):
+                outcome = "collapse"
+            elif extracted:
+                outcome = "extracted"
+            else:
+                outcome = "settled"
         elif extracted:
             outcome = "extracted"
         else:
@@ -397,6 +401,8 @@ class JengaSimulation:
         spawn = self.frame(sequence=sequence, sim_time=0.0, phase="place-drop")
         frames.append(spawn)
         self._emit_frame(spawn, frame_callback)
+        place_snapshot = self._snapshot_vertical_contacts(placed.body_id)
+        collapse_lost_steps: dict[int, int] = {}
         settled = False
         stable_steps = 0
         timeout_steps = round(SETTLE_TIMEOUT_SECONDS / TIMESTEP)
@@ -413,7 +419,7 @@ class JengaSimulation:
                 )
                 frames.append(frame)
                 self._emit_frame(frame, frame_callback)
-            if self._has_obvious_collapse(target_id=-1, include_tilt=False):
+            if self._check_collapse(place_snapshot, collapse_lost_steps):
                 break
             if self._all_blocks_below_velocity_thresholds():
                 stable_steps += 1
@@ -541,27 +547,55 @@ class JengaSimulation:
         world_dir, _ = bullet.multiplyTransforms((0, 0, 0), rotation, local_dir, (0, 0, 0, 1))
         return (world_dir[0], world_dir[1], 0.0)
 
-    def _is_extracted(
-        self, target: BlockBody, initial_position: tuple[float, ...], direction: tuple[float, ...]
-    ) -> bool:
-        position, _ = bullet.getBasePositionAndOrientation(target.body_id, physicsClientId=self.client_id)
-        movement = sum((position[index] - initial_position[index]) * direction[index] for index in range(3))
-        return movement >= BLOCK_LENGTH
+    def _is_extracted(self, target: BlockBody) -> bool:
+        block_ids = {b.body_id for b in self.blocks if b.body_id != target.body_id and b.body_id not in self.retired_body_ids}
+        contacts = bullet.getContactPoints(bodyA=target.body_id, physicsClientId=self.client_id)
+        return not any(c[2] in block_ids for c in contacts)
 
-    def _has_obvious_collapse(self, target_id: int, *, include_tilt: bool = True) -> bool:
+    def _snapshot_vertical_contacts(self, target_id: int) -> dict[int, set[int]]:
+        snapshot: dict[int, set[int]] = {}
         for block in self.blocks:
             if block.body_id == target_id or block.body_id in self.retired_body_ids:
                 continue
-            position, rotation = bullet.getBasePositionAndOrientation(
-                block.body_id, physicsClientId=self.client_id
-            )
-            roll, pitch, _ = bullet.getEulerFromQuaternion(rotation)
-            if position[2] < 0.0:
+            contacts = bullet.getContactPoints(bodyA=block.body_id, physicsClientId=self.client_id)
+            vertical = {c[2] for c in contacts if abs(c[7][2]) > 0.7 and c[2] != target_id}
+            if vertical:
+                snapshot[block.body_id] = vertical
+        return snapshot
+
+    def _check_collapse(self, snapshot: dict[int, set[int]], lost_steps: dict[int, int]) -> bool:
+        ground_ids = {self.base_body_id, self.floor_body_id}
+        for block in self.blocks:
+            if block.body_id in self.retired_body_ids or block.spec.layer == 1:
+                continue
+            contacts = bullet.getContactPoints(bodyA=block.body_id, physicsClientId=self.client_id)
+            if any(c[2] in ground_ids for c in contacts):
+                logger.debug("COLLAPSE: %s (layer %d) touched ground/base", block.spec.internal_id, block.spec.layer)
                 return True
-            if abs(position[0]) > BASE_HALF_WIDTH or abs(position[1]) > BASE_HALF_WIDTH:
-                return True
-            if include_tilt and math.degrees(max(abs(roll), abs(pitch))) > MAX_TILT_DEGREES:
-                return True
+        for body_id, required in snapshot.items():
+            contacts = bullet.getContactPoints(bodyA=body_id, physicsClientId=self.client_id)
+            current = {c[2] for c in contacts if abs(c[7][2]) > 0.7}
+            lost = required - current
+            if lost:
+                lost_steps[body_id] = lost_steps.get(body_id, 0) + 1
+                if lost_steps[body_id] >= COLLAPSE_CONSECUTIVE_STEPS:
+                    spec = next((b.spec for b in self.blocks if b.body_id == body_id), None)
+                    lost_names = []
+                    for lid in lost:
+                        lspec = next((b.spec for b in self.blocks if b.body_id == lid), None)
+                        lost_names.append(lspec.internal_id if lspec else str(lid))
+                    logger.debug(
+                        "COLLAPSE: %s (layer %d) lost vertical contact with [%s] for %d steps. had=%s now=%s",
+                        spec.internal_id if spec else body_id,
+                        spec.layer if spec else -1,
+                        ", ".join(lost_names),
+                        lost_steps[body_id],
+                        required,
+                        current,
+                    )
+                    return True
+            else:
+                lost_steps[body_id] = 0
         return False
 
     def _settle_with_frames(
@@ -570,9 +604,9 @@ class JengaSimulation:
         sequence: int,
         simulated_steps: int,
         target: BlockBody,
-        initial_position: tuple[float, ...],
-        direction: tuple[float, ...],
         extracted: bool,
+        contact_snapshot: dict[int, set[int]],
+        collapse_lost_steps: dict[int, int],
         frame_callback: Callable[[dict[str, Any]], None] | None,
     ) -> tuple[bool, bool, int, int, int]:
         stable_steps = 0
@@ -584,8 +618,8 @@ class JengaSimulation:
                 sequence += 1
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="settle"))
                 self._emit_frame(frames[-1], frame_callback)
-            extracted = extracted or self._is_extracted(target, initial_position, direction)
-            if self._has_obvious_collapse(target.body_id, include_tilt=False):
+            extracted = extracted or self._is_extracted(target)
+            if self._check_collapse(contact_snapshot, collapse_lost_steps):
                 return False, extracted, sequence, simulated_steps, settle_step
             if self._all_blocks_below_velocity_thresholds(ignored_body_id=target.body_id if extracted else None):
                 stable_steps += 1
@@ -613,7 +647,7 @@ class JengaSimulation:
                     self.frame(
                         sequence=sequence,
                         sim_time=simulated_steps * TIMESTEP,
-                        phase="collapse-settle",
+                        phase="collapse",
                     )
                 )
                 self._emit_frame(frames[-1], frame_callback)
