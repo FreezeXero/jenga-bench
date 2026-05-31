@@ -6,8 +6,8 @@
   <title>JengaBench</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=15">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=16">
 </head>
 <body>
 
@@ -26,12 +26,10 @@
       <div class="topbar-pill">SWECCathon 2026</div>
     </div>
     <nav class="topbar-nav">
-      <button class="nav-tab active" onclick="showTab('inspector', this)">Inspector</button>
-      <button class="nav-tab" onclick="showTab('results', this)">Results</button>
+      <button class="nav-tab active" onclick="showTab('demo', this)">Demo</button>
+      <button class="nav-tab" onclick="showTab('benchmark', this)">Benchmark</button>
     </nav>
     <div class="topbar-right">
-      <button id="capture" class="btn btn-sm">Capture PNG</button>
-      <button id="reset" class="btn btn-sm btn-outline">Reset camera</button>
       <button class="theme-btn" id="theme-toggle" title="Toggle theme">
         <svg class="icon-dark" viewBox="0 0 16 16"><path d="M13.5 10.5A6 6 0 0 1 5.5 2.5a6 6 0 1 0 8 8z" fill="currentColor"/></svg>
         <svg class="icon-light" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.8" fill="currentColor"/><line x1="8" y1="1" x2="8" y2="3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="8" y1="12.8" x2="8" y2="15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="1" y1="8" x2="3.2" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="12.8" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="3.05" y1="3.05" x2="4.6" y2="4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="11.4" y1="11.4" x2="12.95" y2="12.95" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="12.95" y1="3.05" x2="11.4" y2="4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="4.6" y1="11.4" x2="3.05" y2="12.95" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
@@ -39,53 +37,130 @@
     </div>
   </header>
 
-  <!-- ═══ INSPECTOR ═══ -->
-  <div class="tab-content active" id="tab-inspector">
-    <div class="inspector-layout">
+  <!-- ═══ DEMO ═══ -->
+  <div class="tab-content active" id="tab-demo">
+    <div class="inspector-layout" id="inspector-layout">
       <div class="viewport-col">
         <div class="viewport-wrapper">
           <div id="viewport">
             <canvas id="frame" width="512" height="512"></canvas>
+            <img id="pybullet-frame" class="hidden" alt="PyBullet render">
             <div id="loading"><span class="spinner"></span>Capturing</div>
-            <div class="viewport-hint">Drag to orbit · Scroll to zoom</div>
+            <div class="viewport-hint" id="viewport-hint">Drag to orbit · Scroll to zoom</div>
             <div class="collapse-flash" id="collapse-flash"></div>
             <div class="viewport-status"><span class="vs-dot" id="vs-dot"></span><span id="status">Connecting</span></div>
+            <span id="outcome" class="hidden">—</span>
           </div>
         </div>
-        <div class="status-strip">
-          <div class="ss-item"><span class="ss-label">Phase</span><span class="ss-val highlight" id="phase">idle</span></div>
-          <div class="ss-sep"></div>
-          <div class="ss-item"><span class="ss-label">Outcome</span><span class="ss-val" id="outcome">—</span></div>
-          <div class="ss-sep"></div>
-          <div class="ss-item"><span class="ss-label">Sim</span><span class="ss-val mono"><span id="sim-time">0.00</span>s</span></div>
-          <div class="ss-sep"></div>
-          <div class="ss-item"><span class="ss-label">Frames</span><span class="ss-val mono" id="frame-count">0</span></div>
-        </div>
+
+        <span id="azimuth" class="hidden">225.00</span>
+        <span id="pitch" class="hidden">15.00</span>
+        <span id="distance" class="hidden">45.00</span>
       </div>
 
       <aside class="controls-col">
-        <!-- CAMERA -->
-        <div class="card">
-          <div class="card-header"><span class="chip">Camera</span></div>
+        <!-- SIDEBAR TABS -->
+        <div class="sidebar-tabs">
+          <button class="sidebar-tab active" data-mode="human" onclick="switchMode('human', this)">Human</button>
+          <button class="sidebar-tab" data-mode="llm" onclick="switchMode('llm', this)">LLM</button>
+        </div>
+
+        <!-- SIM INFO (during animation, both modes) -->
+        <div class="card hidden" id="panel-sim">
+          <div class="card-header"><span class="chip">Simulation</span></div>
           <div class="cam-row">
-            <div class="cam-cell"><div class="cam-val" id="azimuth">225.00</div><div class="cam-label">Azimuth</div></div>
+            <div class="cam-cell"><div class="cam-val highlight" id="phase">idle</div><div class="cam-label">Phase</div></div>
             <div class="cam-divider"></div>
-            <div class="cam-cell"><div class="cam-val" id="pitch">15.00</div><div class="cam-label">Pitch</div></div>
+            <div class="cam-cell"><div class="cam-val mono" id="sim-time">0.00</div><div class="cam-label">Sim (s)</div></div>
             <div class="cam-divider"></div>
-            <div class="cam-cell"><div class="cam-val" id="distance">45.00</div><div class="cam-label">Distance</div></div>
+            <div class="cam-cell"><div class="cam-val mono" id="frame-count">0</div><div class="cam-label">Frames</div></div>
           </div>
         </div>
 
-        <!-- PUSH -->
-        <div class="card">
-          <div class="card-header"><span class="chip">Push Block</span></div>
+        <!-- ACTION TYPE SELECTOR (LLM mode only) -->
+        <div class="card hidden" id="panel-action-type">
+          <div class="form-field full">
+            <label class="form-label">Action</label>
+            <div class="pill-group" id="action-type-pills">
+              <button class="pill" data-val="viewpoint" onclick="selectLLMAction('viewpoint')">
+                <svg viewBox="0 0 80 40" width="40" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px">
+                  <rect x="10" y="8" width="20" height="16" rx="2" fill="currentColor" opacity="0.25"/>
+                  <polygon points="30,12 42,6 42,30 30,24" fill="currentColor" opacity="0.15"/>
+                  <line x1="22" y1="24" x2="14" y2="36"/><line x1="22" y1="24" x2="22" y2="36"/><line x1="22" y1="24" x2="30" y2="36"/>
+                </svg>
+                Viewpoint
+              </button>
+              <button class="pill active" data-val="push" onclick="selectLLMAction('push')">
+                <svg viewBox="0 0 80 40" width="40" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px">
+                  <line x1="15" y1="12" x2="55" y2="12"/><polyline points="48,7 58,12 48,17"/>
+                  <rect x="15" y="22" width="40" height="8" rx="1.5" fill="currentColor" opacity="0.25"/>
+                </svg>
+                Push
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- CAMERA (LLM viewpoint action) -->
+        <div class="card hidden" id="panel-camera">
+          <div class="form-grid">
+            <div class="form-field full">
+              <label class="form-label">Direction</label>
+              <div class="pill-group direction-grid" id="direction-pills">
+                <button class="pill" data-val="NW">NW</button>
+                <button class="pill" data-val="N">N</button>
+                <button class="pill" data-val="NE">NE</button>
+                <button class="pill" data-val="W">W</button>
+                <span></span>
+                <button class="pill" data-val="E">E</button>
+                <button class="pill active" data-val="SW">SW</button>
+                <button class="pill" data-val="S">S</button>
+                <button class="pill" data-val="SE">SE</button>
+              </div>
+              <select id="cam-direction" class="hidden"></select>
+            </div>
+            <div class="form-field full">
+              <label class="form-label">Elevation layer</label>
+              <input id="cam-elevation" class="form-input" type="number" min="1" max="18" value="9">
+            </div>
+            <div class="form-field full">
+              <label class="form-label">Distance</label>
+              <div class="pill-group" id="distance-pills">
+                <button class="pill" data-val="Close">Close</button>
+                <button class="pill" data-val="Medium">Medium</button>
+                <button class="pill active" data-val="Full">Full</button>
+              </div>
+              <select id="cam-distance" class="hidden"></select>
+            </div>
+            <div class="form-field full">
+              <label class="form-label">Target block (optional)</label>
+              <div class="form-grid" style="margin-bottom:0">
+                <div class="form-field">
+                  <input id="cam-target-layer" class="form-input" type="number" min="1" max="18" placeholder="Layer">
+                </div>
+                <div class="form-field">
+                  <select id="cam-target-color" class="form-input">
+                    <option value="">None</option>
+                    <option>Blue</option>
+                    <option>Brown</option>
+                    <option>Red</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button id="change-viewpoint" class="btn btn-accent full-w">Change Viewpoint</button>
+          </div>
+        </div>
+
+        <!-- PUSH (push phase) -->
+        <div class="card hidden" id="panel-push">
           <div class="form-grid">
             <div class="form-field full">
               <label class="form-label">Layer</label>
               <input id="push-layer" class="form-input" type="number" min="1" max="18" value="8">
             </div>
-
-            <!-- COLOR as pills -->
             <div class="form-field full">
               <label class="form-label">Color</label>
               <div class="pill-group" id="color-pills">
@@ -95,8 +170,6 @@
               </div>
               <select id="push-color" class="hidden"></select>
             </div>
-
-            <!-- FACE as pills -->
             <div class="form-field full">
               <label class="form-label">Face</label>
               <div class="pill-group" id="face-pills">
@@ -105,8 +178,6 @@
               </div>
               <select id="push-face" class="hidden"></select>
             </div>
-
-            <!-- CONTACT as pills -->
             <div class="form-field full">
               <label class="form-label">Contact point</label>
               <div class="pill-group" id="contact-grid">
@@ -116,8 +187,6 @@
               </div>
               <select id="push-contact" class="hidden"></select>
             </div>
-
-            <!-- STRENGTH as pills -->
             <div class="form-field full">
               <label class="form-label">Strength</label>
               <div class="pill-group" id="strength-pills">
@@ -136,9 +205,16 @@
           </div>
         </div>
 
-        <!-- PLACE BACK -->
-        <div class="card">
-          <div class="card-header"><span class="chip">Place Back</span></div>
+        <!-- PLACE BACK (place_back phase) -->
+        <div class="card hidden" id="panel-place">
+          <div class="card-illustration">
+            <svg viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="15" y="28" width="50" height="10" rx="1.5" fill="currentColor" opacity="0.25"/>
+              <line x1="40" y1="44" x2="40" y2="62"/>
+              <polyline points="34,56 40,64 46,56"/>
+            </svg>
+          </div>
+          <div class="card-title">Place Back</div>
           <div class="form-grid">
             <div class="form-field full">
               <label class="form-label">Placement</label>
@@ -153,17 +229,23 @@
             </div>
           </div>
           <div class="card-actions">
-            <button id="place-back" class="btn btn-accent full-w" disabled>Place block on top</button>
-            <button id="reset-tower" class="btn btn-ghost full-w">Reset tower</button>
+            <button id="place-back" class="btn btn-accent full-w">Place block on top</button>
           </div>
-          <input id="tower-seed" type="number" value="0" class="hidden">
+        </div>
+
+        <!-- RESET (collapse) -->
+        <div class="card hidden" id="panel-reset">
+          <div class="card-actions">
+            <button id="reset-tower" class="btn btn-accent full-w">New Game</button>
+          </div>
+          <input id="tower-seed" type="hidden" value="0">
         </div>
       </aside>
     </div>
   </div>
 
-  <!-- ═══ RESULTS ═══ -->
-  <div class="tab-content" id="tab-results">
+  <!-- ═══ BENCHMARK ═══ -->
+  <div class="tab-content" id="tab-benchmark">
     <div class="results-layout">
       <div class="results-main">
         <div class="results-header">
@@ -174,9 +256,7 @@
           <div class="results-seed-info">Seed: <span class="mono highlight" id="results-seed">—</span></div>
         </div>
 
-        <!-- MODEL SELECTOR TABS -->
         <div class="model-tabs" id="model-tabs"></div>
-
         <div class="leaderboard" id="leaderboard"></div>
 
         <div class="episode-section">
@@ -218,21 +298,14 @@
 
   <span id="status-dot" style="display:none"></span>
 
-  <script src="/static/app.js?v=7"></script>
+  <script src="/static/app.js?v=8"></script>
   <script>
   // ── CANVAS BG FIX ──
-  const _origClear = gl.clearColor.bind(gl);
-  gl.clearColor = function(r, g, b, a) {
-    if (r === 1 && g === 1 && b === 1) {
-      const light = document.documentElement.getAttribute('data-theme') === 'light';
-      light ? _origClear(0.91, 0.88, 0.82, 1) : _origClear(1.0, 0.97, 0.94, 1);
-    } else { _origClear(r, g, b, a); }
-  };
 
   // ── THEME ──
   const root = document.documentElement;
   const savedTheme = localStorage.getItem('theme') || 'dark';
-if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
+  if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
   document.getElementById('theme-toggle').addEventListener('click', () => {
     const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
     root.setAttribute('data-theme', next);
@@ -248,6 +321,67 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
     btn.classList.add('active');
   }
 
+  // ── MODE SWITCHING ──
+  let currentMode = 'human';
+
+  function switchMode(mode, btn) {
+    currentMode = mode;
+    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+
+    const isLLM = mode === 'llm';
+    document.getElementById('panel-action-type').classList.toggle('hidden', !isLLM);
+    document.getElementById('viewport-hint').textContent = isLLM ? 'Locked' : 'Drag to orbit · Scroll to zoom';
+    if (!isLLM) {
+      document.getElementById('panel-camera').classList.add('hidden');
+    }
+
+    // Viewport: show static PNG in LLM idle, WebGL in Human
+    const canvas = document.getElementById('frame');
+    const img = document.getElementById('pybullet-frame');
+    if (isLLM && !sandboxBusy) {
+      canvas.classList.add('hidden');
+      img.classList.remove('hidden');
+      fetchPybulletFrame();
+    } else {
+      canvas.classList.remove('hidden');
+      img.classList.add('hidden');
+      if (typeof renderScene === 'function') renderScene();
+    }
+
+    updateActionControls();
+  }
+
+  function fetchPybulletFrame() {
+    fetch('/api/capture', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(llmCamera),
+    })
+    .then(r => r.ok ? r.blob() : null)
+    .then(blob => {
+      if (blob) {
+        const img = document.getElementById('pybullet-frame');
+        const url = URL.createObjectURL(blob);
+        img.onload = () => URL.revokeObjectURL(url);
+        img.src = url;
+      }
+    })
+    .catch(() => {});
+  }
+
+  // ── LLM ACTION SELECTOR ──
+  let llmAction = 'push';
+
+  function selectLLMAction(action) {
+    llmAction = action;
+    document.querySelectorAll('#action-type-pills .pill').forEach(p => {
+      p.classList.toggle('active', p.dataset.val === action);
+    });
+    document.getElementById('panel-camera').classList.toggle('hidden', action !== 'viewpoint');
+    if (typeof updateActionControls === 'function') updateActionControls();
+  }
+
   // ── PILL GROUPS ──
   function bindPills(groupId, selectId, onchange) {
     document.querySelectorAll(`#${groupId} .pill`).forEach(pill => {
@@ -261,7 +395,6 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
     });
   }
 
-  // update color + face pills when layer changes
   function updateLayerDependentPills() {
     const layer = Number(document.getElementById('push-layer').value);
     const isOdd = layer % 2 === 1;
@@ -282,7 +415,6 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
     document.getElementById('push-face').value = faces[0];
     bindPills('face-pills', 'push-face');
 
-    // also update the hidden selects to match app.js expectations
     const colorSel = document.getElementById('push-color');
     colorSel.innerHTML = colors.map(c => `<option>${c}</option>`).join('');
     colorSel.value = colors[0];
@@ -297,32 +429,19 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
   bindPills('contact-grid', 'push-contact');
   bindPills('strength-pills', 'push-intensity');
   bindPills('placement-pills', 'place-position');
+  bindPills('direction-pills', 'cam-direction');
+  bindPills('distance-pills', 'cam-distance');
 
-  // init contact select
+  const dirSel = document.getElementById('cam-direction');
+  dirSel.innerHTML = ['SW','N','NE','E','SE','S','W','NW'].map(d=>`<option>${d}</option>`).join('');
+  dirSel.value = 'SW';
+  const distSel = document.getElementById('cam-distance');
+  distSel.innerHTML = ['Close','Medium','Full'].map(d=>`<option>${d}</option>`).join('');
+  distSel.value = 'Full';
+
   const contactSel = document.getElementById('push-contact');
   contactSel.innerHTML = ['center','left','right'].map(c=>`<option>${c}</option>`).join('');
   contactSel.value = 'center';
-
-  // ── PHASE-AWARE UI: show push OR place-back, never both ──
-  function updatePhaseUI() {
-    const phase = document.getElementById('phase').textContent.trim().toLowerCase();
-    const isPlaceBack = phase === 'place_back';
-    // push controls
-    document.getElementById('push').classList.toggle('hidden', isPlaceBack);
-    document.querySelectorAll('#contact-grid, #strength-pills, #color-pills, #face-pills').forEach(el => {
-      if (el) el.closest('.form-field')?.classList.toggle('hidden', isPlaceBack);
-    });
-    // place-back controls
-    document.getElementById('place-back').classList.toggle('hidden', !isPlaceBack);
-    const ps = document.getElementById('placement-section');
-    if (ps) ps.classList.toggle('hidden', !isPlaceBack);
-  }
-
-  new MutationObserver(updatePhaseUI).observe(
-    document.getElementById('phase'),
-    { childList: true, characterData: true, subtree: true }
-  );
-  updatePhaseUI();
 
   // ── COLLAPSE FLASH ──
   const outcomeEl = document.getElementById('outcome');
@@ -350,7 +469,7 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
         steps: [
           { step:1, type:"look", action:{type:"ChangeViewpoint",azimuth:180,pitch:15,distance_cm:45}, reasoning:"Assessing tower stability from south before committing to any push.", reward:0, terminated:false },
           { step:2, type:"push", action:{type:"Push",layer:4,color:"Blue",face:"West",contact:"center",intensity:"Gentle"}, reasoning:"Layer 4 center block appears well-supported. Gentle west push should extract cleanly.", reward:0, terminated:false },
-          { step:3, type:"push", action:{type:"Push",layer:7,color:"Red",face:"East",contact:"right",intensity:"Firm"}, reasoning:"Layer 7 overhangs on the right. Center-right extraction redistributes load to remaining blocks.", reward:0, terminated:false },
+          { step:3, type:"push", action:{type:"Push",layer:7,color:"Red",face:"East",contact:"right",intensity:"Firm"}, reasoning:"Layer 7 overhangs on the right. Right extraction redistributes load to remaining blocks.", reward:0, terminated:false },
         ]
       },
       { name: "GPT-4o", score: 74.5, blocks: 12, episodes: 3, invalid: 4, color: "#5da8d6",
@@ -381,7 +500,6 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
     document.getElementById('stat-episodes').textContent = data.models[0]?.episodes ?? '—';
     document.getElementById('stat-models').textContent = data.models.length;
 
-    // model selector tabs
     const tabs = document.getElementById('model-tabs');
     tabs.innerHTML = '';
     data.models.forEach((m, i) => {
@@ -440,7 +558,7 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
     currentSteps.forEach((s, i) => {
       const el = document.createElement('button');
       el.className = 'step-pill' + (s.type==='look'?' look':s.terminated?' fail':' push') + (i===currentStepIdx?' active':'');
-      el.innerHTML = (s.type==='look'?'👁':'👆') + ` ${s.step}`;
+      el.innerHTML = (s.type==='look'?'&#128065;':'&#128070;') + ` ${s.step}`;
       el.onclick = () => showStep(i);
       tl.appendChild(el);
     });
@@ -472,7 +590,6 @@ if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
   function nextStep() { if (currentStepIdx < currentSteps.length - 1) showStep(currentStepIdx + 1); }
   function loadDemoResults() { renderResults(DEMO_DATA); }
 
-  // Auto-load results JSON from repo if it exists
   fetch('/static/results.json')
     .then(r => r.ok ? r.json() : null)
     .then(data => { if (data) renderResults(data); })

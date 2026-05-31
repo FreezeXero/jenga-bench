@@ -23,12 +23,12 @@ ROOT = Path(__file__).resolve().parents[1]
 PHYSICS_AVAILABLE = all(importlib.util.find_spec(name) for name in ("numpy", "pybullet"))
 
 
-def viewpoint(azimuth: float = 45.0, pitch: float = 12.0, distance_cm: float = 50.0) -> dict:
+def viewpoint(direction: str = "NE", elevation_layer: int = 9, distance: str = "Full") -> dict:
     return {
         "type": "ChangeViewpoint",
-        "azimuth": azimuth,
-        "pitch": pitch,
-        "distance_cm": distance_cm,
+        "direction": direction,
+        "elevation_layer": elevation_layer,
+        "distance": distance,
     }
 
 
@@ -47,17 +47,17 @@ class PngContractTests(unittest.TestCase):
     def test_viewpoint_updates_png_and_prompt(self) -> None:
         env = JengaBenchEnv()
         initial = env.reset(seed=7)
-        result = env.step(viewpoint(azimuth=90.0, pitch=-5.0, distance_cm=70.0))
+        result = env.step(viewpoint(direction="E", elevation_layer=5, distance="Medium"))
 
         self.assertEqual(result.content_type, PNG_CONTENT_TYPE)
         self.assertNotEqual(initial["data"], result.observation)
-        self.assertIn("azimuth=90.00", result.system_prompt or "")
-        self.assertIn("pitch=-5.00", result.system_prompt or "")
+        self.assertIn("direction=E", result.system_prompt or "")
+        self.assertIn("elevation_layer=5", result.system_prompt or "")
         self.assertEqual(result.reward, 0.0)
         self.assertFalse(result.terminated)
 
     def test_same_seed_and_actions_are_byte_identical(self) -> None:
-        actions = [viewpoint(20.0), viewpoint(140.0, pitch=30.0), viewpoint(280.0)]
+        actions = [viewpoint("NE"), viewpoint("SE", elevation_layer=5), viewpoint("W")]
         first = JengaBenchEnv()
         second = JengaBenchEnv()
 
@@ -89,10 +89,10 @@ class ActionContractTests(unittest.TestCase):
         env.reset(seed=1)
 
         for index in range(VIEWPOINT_LIMIT - 1):
-            result = env.step(viewpoint(azimuth=float(index * 10)))
+            result = env.step(viewpoint(direction=["N","NE","E","SE","S","SW","W","NW","N"][index]))
             self.assertFalse(result.terminated)
 
-        result = env.step(viewpoint(azimuth=180.0))
+        result = env.step(viewpoint(direction="S"))
 
         self.assertTrue(result.terminated)
         self.assertEqual(result.reward, -10.0)
@@ -119,9 +119,9 @@ class ManifestTests(unittest.TestCase):
         schema = json.loads(action_space["schema_ref"])
         variants = {variant["properties"]["type"]["const"]: variant for variant in schema["oneOf"]}
         self.assertEqual(set(variants), {"ChangeViewpoint", "Push", "PlaceBack"})
-        self.assertEqual(variants["ChangeViewpoint"]["properties"]["azimuth"]["maximum"], 360)
-        self.assertEqual(variants["ChangeViewpoint"]["properties"]["pitch"]["minimum"], -90)
-        self.assertEqual(variants["ChangeViewpoint"]["properties"]["distance_cm"]["minimum"], 20)
+        self.assertIn("direction", variants["ChangeViewpoint"]["properties"])
+        self.assertIn("elevation_layer", variants["ChangeViewpoint"]["properties"])
+        self.assertIn("distance", variants["ChangeViewpoint"]["properties"])
         self.assertEqual(variants["Push"]["properties"]["layer"]["minimum"], 1)
         self.assertEqual(variants["Push"]["properties"]["intensity"]["enum"], ["Gentle", "Firm", "Hard"])
         self.assertIn("position", variants["PlaceBack"]["properties"])

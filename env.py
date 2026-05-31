@@ -18,11 +18,16 @@ VIEWPOINT_LIMIT = 10
 INVALID_ACTION_PENALTY = -0.5
 VIEWPOINT_TIMEOUT_PENALTY = -10.0
 
+DIRECTIONS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
+DISTANCES = {"Close": 15.0, "Medium": 30.0, "Full": 45.0}
+
 @dataclass
 class CameraState:
-    azimuth: float = 225.0
-    pitch: float = 15.0
-    distance_cm: float = 45.0
+    direction: str = "SW"
+    elevation_layer: int = 9
+    distance: str = "Full"
+    target_layer: int | None = None
+    target_color: str | None = None
 
 
 class JengaBenchEnv(BaseEnv):
@@ -82,10 +87,13 @@ class JengaBenchEnv(BaseEnv):
                 event=f"invalid_action: {error}",
             )
 
+        target_block = action.get("target_block")
         self._camera = CameraState(
-            azimuth=float(action["azimuth"]) % 360.0,
-            pitch=float(action["pitch"]),
-            distance_cm=float(action["distance_cm"]),
+            direction=action["direction"],
+            elevation_layer=int(action["elevation_layer"]),
+            distance=action["distance"],
+            target_layer=int(target_block["layer"]) if target_block else None,
+            target_color=target_block.get("color") if target_block else None,
         )
         self._consecutive_viewpoints += 1
 
@@ -192,14 +200,16 @@ class JengaBenchEnv(BaseEnv):
         return (
             "You are playing JengaBench. Use the image as the current camera view. "
             "Return exactly one JSON action. Available actions: "
-            '{"type":"ChangeViewpoint","azimuth":0..360,"pitch":-90..90,'
-            '"distance_cm":20..120} or '
+            '{"type":"ChangeViewpoint","direction":"N|NE|E|SE|S|SW|W|NW",'
+            '"elevation_layer":1..18,"distance":"Close|Medium|Full",'
+            '"target_block":{"layer":int,"color":"Blue|Brown|Red"}} or '
             '{"type":"Push","layer":"1..one below current top layer","color":"Blue|Brown|Red",'
             '"face":"North|South|East|West","contact":"center|left|right",'
             '"intensity":"Gentle|Firm|Hard"} or '
             '{"type":"PlaceBack","position":"Left|Middle|Right"}. '
-            f"Camera: azimuth={self._camera.azimuth:.2f}, pitch={self._camera.pitch:.2f}, "
-            f"distance_cm={self._camera.distance_cm:.2f}. "
+            f"Camera: direction={self._camera.direction}, "
+            f"elevation_layer={self._camera.elevation_layer}, "
+            f"distance={self._camera.distance}. "
             f"Consecutive viewpoints: {self._consecutive_viewpoints}/{VIEWPOINT_LIMIT}. "
             f"Phase: {self._simulation.phase if self._simulation is not None else 'push'}. "
             f"Successful extractions: {self._successful_extractions}. "
@@ -208,12 +218,18 @@ class JengaBenchEnv(BaseEnv):
             "The tenth consecutive viewpoint terminates the episode with a -10 point penalty."
         )
 
-    def _camera_info(self) -> dict[str, float]:
-        return {
-            "azimuth": round(self._camera.azimuth, 2),
-            "pitch": round(self._camera.pitch, 2),
-            "distance_cm": round(self._camera.distance_cm, 2),
+    def _camera_info(self) -> dict[str, Any]:
+        info: dict[str, Any] = {
+            "direction": self._camera.direction,
+            "elevation_layer": self._camera.elevation_layer,
+            "distance": self._camera.distance,
         }
+        if self._camera.target_layer is not None:
+            info["target_block"] = {
+                "layer": self._camera.target_layer,
+                "color": self._camera.target_color,
+            }
+        return info
 
     def _normalized_score(self) -> float:
         return round(self._raw_points / PERFECT_RAW_SCORE * 100.0, 2)
@@ -228,22 +244,25 @@ class JengaBenchEnv(BaseEnv):
             return "action must be a JSON object"
         if action.get("type") != "ChangeViewpoint":
             return "type must be ChangeViewpoint, Push, or PlaceBack"
-        required = ("azimuth", "pitch", "distance_cm")
+        required = ("direction", "elevation_layer", "distance")
         missing = [field for field in required if field not in action]
         if missing:
             return f"missing field(s): {', '.join(missing)}"
-        for field in required:
-            value = action[field]
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                return f"{field} must be numeric"
-            if not math.isfinite(float(value)):
-                return f"{field} must be finite"
-        if not 0.0 <= float(action["azimuth"]) <= 360.0:
-            return "azimuth must be between 0 and 360"
-        if not -90.0 <= float(action["pitch"]) <= 90.0:
-            return "pitch must be between -90 and 90"
-        if not 20.0 <= float(action["distance_cm"]) <= 120.0:
-            return "distance_cm must be between 20 and 120"
+        if action["direction"] not in DIRECTIONS:
+            return f"direction must be one of {', '.join(DIRECTIONS)}"
+        elev = action["elevation_layer"]
+        if not isinstance(elev, int) or not 1 <= elev <= 18:
+            return "elevation_layer must be an integer from 1 to 18"
+        if action["distance"] not in DISTANCES:
+            return f"distance must be one of {', '.join(DISTANCES)}"
+        target_block = action.get("target_block")
+        if target_block is not None:
+            if not isinstance(target_block, dict):
+                return "target_block must be an object with layer and color"
+            if "layer" not in target_block or "color" not in target_block:
+                return "target_block must have layer and color fields"
+            if target_block["color"] not in ("Blue", "Brown", "Red"):
+                return "target_block color must be Blue, Brown, or Red"
         return None
 
     def _last_outcome(self) -> str:
@@ -275,11 +294,26 @@ class JengaBenchEnv(BaseEnv):
             raise RuntimeError("Call reset() before rendering")
         from jenga.render import CameraPose, render_png
 
-        return render_png(
-            self._simulation,
-            CameraPose(
-                azimuth=self._camera.azimuth,
-                pitch=self._camera.pitch,
-                distance_cm=self._camera.distance_cm,
-            ),
+        pose = CameraPose.from_viewpoint(
+            direction=self._camera.direction,
+            elevation_layer=self._camera.elevation_layer,
+            distance_cm=DISTANCES[self._camera.distance],
         )
+        target = self._resolve_target()
+        return render_png(self._simulation, pose, target=target)
+
+    def _resolve_target(self) -> tuple[float, float, float] | None:
+        if self._simulation is None or self._camera.target_layer is None:
+            return None
+        from jenga.render import CameraPose
+        import pybullet as bullet
+
+        for block in self._simulation.blocks:
+            if (block.spec.layer == self._camera.target_layer
+                    and block.spec.color_name == self._camera.target_color
+                    and block.body_id not in self._simulation.retired_body_ids):
+                pos, _ = bullet.getBasePositionAndOrientation(
+                    block.body_id, physicsClientId=self._simulation.client_id
+                )
+                return tuple(pos)
+        return CameraPose.target_for_layer(self._camera.elevation_layer)

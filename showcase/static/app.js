@@ -1,4 +1,5 @@
 const camera = { azimuth: 225, pitch: 15, distance_cm: 45 };
+const llmCamera = { azimuth: 225, pitch: 15, distance_cm: 45, elevation_layer: 9, direction: "SW" };
 const viewport = document.querySelector("#viewport");
 const canvas = document.querySelector("#frame");
 const loading = document.querySelector("#loading");
@@ -24,8 +25,27 @@ const colorOptions = {
 const faceOptions = { odd: ["North", "South"], even: ["East", "West"] };
 const contactOptions = ["center", "left", "right"];
 
+function syncPills(groupId, selectId) {
+  const val = document.getElementById(selectId)?.value;
+  document.querySelectorAll(`#${groupId} .pill`).forEach(p => {
+    p.classList.toggle('active', p.dataset.val === val);
+  });
+}
+
 function clamp(value, low, high) {
   return Math.min(high, Math.max(low, value));
+}
+
+function activeCamera() {
+  return (typeof currentMode !== "undefined" && currentMode === "llm") ? llmCamera : camera;
+}
+
+function getSeedValue() {
+  return Number(document.querySelector("#tower-seed").value);
+}
+
+function setSeedValue(val) {
+  document.querySelector("#tower-seed").value = String(val);
 }
 
 function updateMetadata() {
@@ -340,28 +360,47 @@ function renderScene() {
 function applyScene(nextScene, { preserveCamera = false } = {}) {
   scene = nextScene;
   document.querySelector("#phase").textContent = nextScene.phase;
-  document.querySelector("#tower-seed").value = String(nextScene.seed ?? 0);
+  setSeedValue(nextScene.seed ?? 0);
   if (!preserveCamera) Object.assign(camera, nextScene.camera);
   document.querySelector("#push-layer").max = String(nextScene.max_push_layer ?? 17);
   document.querySelector("#place-position").replaceChildren(
     ...(nextScene.available_placement_positions || []).map((value) => new Option(value)),
   );
+  syncPills("placement-pills", "place-position");
   loadGeometry();
   updateMetadata();
   renderScene();
   updateActionControls();
-  setStatus("Local preview", true);
+  setStatus("Connected", true);
 }
 
 function setBusy(busy) {
   sandboxBusy = busy;
+  document.querySelector("#panel-sim").classList.toggle("hidden", !busy);
+  document.querySelector("#inspector-layout").classList.toggle("busy", busy);
+  if (busy) {
+    document.querySelector("#frame").classList.remove("hidden");
+    document.querySelector("#pybullet-frame").classList.add("hidden");
+  } else if (typeof currentMode !== "undefined" && currentMode === "llm") {
+    document.querySelector("#frame").classList.add("hidden");
+    document.querySelector("#pybullet-frame").classList.remove("hidden");
+    if (typeof fetchPybulletFrame === "function") fetchPybulletFrame();
+  }
   updateActionControls();
 }
 
 function updateActionControls() {
-  const placementRequired = scene?.phase === "place_back";
-  document.querySelector("#push").disabled = sandboxBusy || sandboxTerminated || placementRequired;
-  document.querySelector("#place-back").disabled = sandboxBusy || sandboxTerminated || !placementRequired;
+  const phase = scene?.phase;
+  const isLLM = typeof currentMode !== "undefined" && currentMode === "llm";
+  const wantsPush = !isLLM || (typeof llmAction !== "undefined" && llmAction === "push");
+  const showPush = phase === "push" && !sandboxBusy && !sandboxTerminated && wantsPush;
+  const showPlace = phase === "place_back" && !sandboxBusy && !sandboxTerminated && wantsPush;
+  const showReset = !phase || sandboxTerminated || (!sandboxBusy && !showPush && !showPlace && wantsPush);
+  document.querySelector("#panel-push").classList.toggle("hidden", !showPush);
+  document.querySelector("#panel-place").classList.toggle("hidden", !showPlace);
+  document.querySelector("#panel-reset").classList.toggle("hidden", !showReset);
+  document.querySelector("#push").disabled = sandboxBusy;
+  document.querySelector("#place-back").disabled = sandboxBusy;
   document.querySelector("#reset-tower").disabled = sandboxBusy;
 }
 
@@ -477,6 +516,8 @@ function updatePushOptions() {
   const parity = Number(document.querySelector("#push-layer").value) % 2 ? "odd" : "even";
   document.querySelector("#push-color").replaceChildren(...colorOptions[parity].map((value) => new Option(value)));
   document.querySelector("#push-face").replaceChildren(...faceOptions[parity].map((value) => new Option(value)));
+  syncPills("color-pills", "push-color");
+  syncPills("face-pills", "push-face");
 }
 
 async function loadScene(path = "/api/state", method = "GET") {
@@ -509,15 +550,6 @@ viewport.addEventListener("wheel", (event) => {
   updateMetadata();
   renderScene();
 }, { passive: false });
-
-document.querySelector("#reset").addEventListener("click", async () => {
-  try {
-    const seed = Number(document.querySelector("#tower-seed").value);
-    await loadScene(`/api/reset?seed=${encodeURIComponent(seed)}`, "POST");
-  } catch (error) {
-    setStatus(error.message);
-  }
-});
 
 document.querySelector("#push-layer").addEventListener("input", updatePushOptions);
 document.querySelector("#push").addEventListener("click", () => {
@@ -552,7 +584,7 @@ document.querySelector("#reset-tower").addEventListener("click", () => {
   setBusy(true);
   socket.send(JSON.stringify({
     type: "Reset",
-    seed: Number(document.querySelector("#tower-seed").value),
+    seed: getSeedValue(),
   }));
   setBusy(false);
   document.querySelector("#phase").textContent = "idle";
@@ -561,27 +593,23 @@ document.querySelector("#reset-tower").addEventListener("click", () => {
   document.querySelector("#frame-count").textContent = "0";
 });
 
-document.querySelector("#capture").addEventListener("click", async () => {
-  loading.classList.add("visible");
-  try {
-    const response = await fetch("/api/capture", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(camera),
-    });
-    if (!response.ok) throw new Error(`Capture failed: ${response.status}`);
-    const url = URL.createObjectURL(await response.blob());
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = "jenga-bench-camera.png";
-    link.click();
-    URL.revokeObjectURL(url);
-    setStatus("Authoritative PNG captured", true);
-  } catch (error) {
-    setStatus(error.message);
-  } finally {
-    loading.classList.remove("visible");
-  }
+const DIRECTION_AZIMUTHS = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
+const DISTANCE_CM = { Close: 15, Medium: 30, Full: 45 };
+
+document.querySelector("#change-viewpoint").addEventListener("click", () => {
+  const dir = document.querySelector("#cam-direction").value || "SW";
+  const elevLayer = clamp(Number(document.querySelector("#cam-elevation").value) || 9, 1, 18);
+  const dist = document.querySelector("#cam-distance").value || "Full";
+
+  llmCamera.azimuth = DIRECTION_AZIMUTHS[dir] ?? 225;
+  llmCamera.distance_cm = DISTANCE_CM[dist] ?? 45;
+  llmCamera.elevation_layer = elevLayer;
+  llmCamera.direction = dir;
+  llmCamera.distance = dist;
+  llmCamera.pitch = 15;
+
+  updateMetadata();
+  if (typeof fetchPybulletFrame === "function") fetchPybulletFrame();
 });
 
 document.querySelector("#push-contact").replaceChildren(...contactOptions.map((value) => new Option(value)));
