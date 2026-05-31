@@ -69,6 +69,14 @@ dd { margin: 0; font-variant-numeric: tabular-nums; font-weight: 750; }
 .status { display: flex; align-items: center; gap: 8px; color: #71695e; font-size: 13px; }
 #status-dot { width: 9px; height: 9px; border-radius: 50%; background: #b57a60; }
 #status-dot.ok { background: #68985e; }
+.sandbox-form { display: grid; gap: 8px; margin: 12px 0; }
+.sandbox-form label { display: grid; gap: 3px; color: #756c61; font-size: 12px; }
+.sandbox-form input, .sandbox-form select { width: 100%; border: 1px solid #d6ccbe; border-radius: 7px; padding: 7px; background: #fffdf9; }
+.sandbox-form button { width: 100%; }
+.sandbox-form .secondary { color: #343932; background: #e3dacd; }
+.sandbox-form button:disabled { cursor: wait; opacity: .55; }
+.sandbox-state { margin-top: 10px; font-size: 12px; }
+.error { min-height: 14px; margin: 0; color: #a8483e; font-size: 12px; }
 
 @media (max-width: 760px) {
   .layout { grid-template-columns: 1fr; margin: 18px 0; }

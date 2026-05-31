@@ -7,7 +7,7 @@
   "binding_vow": {
     "version": "1.0.0",
     "tier": "tier1",
-    "description": "Inspect rendered JengaBench camera views and return one structured action per turn. Milestone 1 exposes ChangeViewpoint only.",
+    "description": "Inspect rendered JengaBench camera views and return one structured ChangeViewpoint or Push action per turn.",
 
     "observation_space": {
       "type": "image",
@@ -17,18 +17,18 @@
 
     "action_space": {
       "type": "json",
-      "schema_ref": "#/schemas/change-viewpoint",
-      "description": "Milestone 1 JSON action: {\"type\":\"ChangeViewpoint\",\"azimuth\":number 0..360,\"pitch\":number -90..90,\"distance_cm\":number 20..120}"
+      "schema_ref": "#/schemas/jenga-action",
+      "description": "JSON action: ChangeViewpoint with azimuth, pitch, distance_cm; or Push with layer, positional color, axial face, 3x3 contact, and Gentle/Firm/Hard intensity."
     },
 
     "reward": {
       "type": "scalar",
       "range": { "low": -10.0, "high": 1.0 },
-      "description": "Milestone 1: valid camera changes score 0, invalid actions score -0.5, and ten consecutive viewpoints terminate with -10."
+      "description": "Valid camera changes and pushes score 0 in this slice, invalid actions score -0.5, and ten consecutive viewpoints terminate with -10."
     },
 
     "episode": {
-      "max_steps": 10,
+      "max_steps": 1000,
       "deterministic_reset": true,
       "supports_seed": true,
       "parallel_episodes": 1,

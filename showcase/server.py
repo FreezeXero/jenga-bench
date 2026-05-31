@@ -3,18 +3,19 @@
 from __future__ import annotations
 
 import atexit
+import asyncio
 import math
 from pathlib import Path
-from threading import RLock
+from threading import Lock, RLock
 
 import uvicorn
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from jenga.render import CameraPose, render_png
-from jenga.sim import JengaSimulation
+from jenga.sim import JengaSimulation, PushRequest, PushValidationError
 from jenga.tower import BASE_CENTER_Z, BASE_SIZE, Orientation
 
 DEFAULT_CAMERA = CameraPose(azimuth=225.0, pitch=15.0, distance_cm=45.0)
@@ -36,6 +37,7 @@ class PreviewState:
         self._lock = RLock()
         self._simulation: JengaSimulation | None = None
         self._camera = DEFAULT_CAMERA
+        self._push_lock = Lock()
 
     @property
     def camera(self) -> CameraPose:
@@ -74,7 +76,7 @@ class PreviewState:
                 for internal_id, position, rotation in self._simulation.transforms()
             }
             for block in self._simulation.blocks:
-                position, _ = transforms[block.spec.internal_id]
+                position, rotation = transforms[block.spec.internal_id]
                 length, width, height = block.spec.dimensions
                 size = (
                     (width, length, height)
@@ -85,6 +87,7 @@ class PreviewState:
                     {
                         "id": block.spec.internal_id,
                         "position": position,
+                        "rotation": rotation,
                         "size": size,
                         "color": block.spec.rgb,
                     }
@@ -99,6 +102,17 @@ class PreviewState:
                 },
                 "blocks": blocks,
             }
+
+    def push(self, request: PushRequest) -> tuple[dict[str, object], ...]:
+        if not self._push_lock.acquire(blocking=False):
+            raise RuntimeError("busy")
+        try:
+            with self._lock:
+                self._ensure_simulation()
+                assert self._simulation is not None
+                return self._simulation.push(request).frames
+        finally:
+            self._push_lock.release()
 
     def close(self) -> None:
         with self._lock:
@@ -123,6 +137,7 @@ class PreviewState:
 
 
 preview = PreviewState()
+motion_lock = Lock()
 atexit.register(preview.close)
 
 app = FastAPI(title="JengaBench Live Tower Inspector", version="1.0.0")
@@ -205,6 +220,56 @@ def frame(request: CameraRequest) -> Response:
 def capture(request: CameraRequest) -> Response:
     data, camera = preview.frame(_validated_camera(request))
     return _png_response(data, camera)
+
+
+@app.websocket("/ws/sandbox")
+async def sandbox(websocket: WebSocket) -> None:
+    await websocket.accept()
+    try:
+        while True:
+            command = await websocket.receive_json()
+            if command.get("type") == "Reset":
+                if motion_lock.locked():
+                    await websocket.send_json({"type": "error", "message": "busy"})
+                    continue
+                scene = await asyncio.to_thread(preview.reset_scene)
+                await websocket.send_json({"type": "scene", "scene": scene})
+                continue
+            if command.get("type") != "Push":
+                await websocket.send_json({"type": "error", "message": "type must be Reset or Push"})
+                continue
+            if not motion_lock.acquire(blocking=False):
+                await websocket.send_json({"type": "error", "message": "busy"})
+                continue
+            try:
+                try:
+                    frames = await asyncio.to_thread(
+                        preview.push,
+                        PushRequest(
+                            layer=command.get("layer"),
+                            color=command.get("color"),
+                            face=command.get("face"),
+                            contact=command.get("contact"),
+                            intensity=command.get("intensity"),
+                        ),
+                    )
+                except (PushValidationError, RuntimeError) as exc:
+                    await websocket.send_json({"type": "error", "message": str(exc)})
+                    continue
+                for frame_payload in frames:
+                    await websocket.send_json(frame_payload)
+                    await asyncio.sleep(1.0 / 30.0)
+                await websocket.send_json(
+                    {
+                        "type": "result",
+                        "outcome": frames[-1]["phase"],
+                        "frame_count": len(frames),
+                    }
+                )
+            finally:
+                motion_lock.release()
+    except WebSocketDisconnect:
+        return
 
 
 if __name__ == "__main__":

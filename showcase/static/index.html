@@ -32,9 +32,28 @@
           <div><dt>Pitch</dt><dd><span id="pitch">15.00</span>&deg;</dd></div>
           <div><dt>Distance</dt><dd><span id="distance">45.00</span> cm</dd></div>
         </dl>
+        <p class="eyebrow">Push sandbox</p>
+        <div class="sandbox-form">
+          <label>Layer<input id="push-layer" type="number" min="1" max="18" value="8"></label>
+          <label>Color<select id="push-color"></select></label>
+          <label>Face<select id="push-face"></select></label>
+          <label>Contact<select id="push-contact"></select></label>
+          <label>Strength<select id="push-intensity">
+            <option>Gentle</option><option>Firm</option><option>Hard</option>
+          </select></label>
+          <button id="push" type="button">Push block</button>
+          <button id="reset-tower" class="secondary" type="button">Reset tower</button>
+          <p id="sandbox-error" class="error"></p>
+        </div>
+        <dl class="sandbox-state">
+          <div><dt>Phase</dt><dd id="phase">idle</dd></div>
+          <div><dt>Outcome</dt><dd id="outcome">-</dd></div>
+          <div><dt>Sim time</dt><dd><span id="sim-time">0.00</span>s</dd></div>
+          <div><dt>Frames</dt><dd id="frame-count">0</dd></div>
+        </dl>
         <div class="status"><span id="status-dot"></span><span id="status">Connecting</span></div>
       </aside>
     </main>
-    <script src="/static/app.js?v=6"></script>
+    <script src="/static/app.js?v=7"></script>
   </body>
 </html>

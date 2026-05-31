@@ -72,11 +72,12 @@ class TowerSpecificationTests(unittest.TestCase):
 
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
 class SimulationTests(unittest.TestCase):
-    def test_prebuilt_tower_loads_without_physics_steps(self) -> None:
+    def test_prebuilt_tower_settles_dynamically(self) -> None:
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
-            self.assertEqual(sim.settle_steps, 0)
+            self.assertGreater(sim.settle_steps, 0)
+            self.assertLessEqual(sim.settle_steps, 720)
         finally:
             sim.close()
 

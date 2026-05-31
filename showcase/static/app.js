@@ -8,6 +8,18 @@ const gl = canvas.getContext("webgl", { alpha: false, antialias: true });
 let scene = null;
 let drag = null;
 let vertexCount = 0;
+let animation = null;
+let socket = null;
+const colorOptions = {
+  odd: ["Red", "Lime", "Blue"],
+  even: ["Wintergreen", "Purple", "Brown"],
+};
+const faceOptions = { odd: ["North", "South"], even: ["East", "West"] };
+const contactOptions = [
+  "top-left", "top-center", "top-right",
+  "center-left", "center", "center-right",
+  "bottom-left", "bottom-center", "bottom-right",
+];
 
 function clamp(value, low, high) {
   return Math.min(high, Math.max(low, value));
@@ -36,6 +48,31 @@ function cross(a, b) {
 function normalize(vector) {
   const length = Math.sqrt(dot(vector, vector));
   return vector.map((value) => value / length);
+}
+
+function rotate(vector, quaternion) {
+  const [x, y, z, w] = quaternion;
+  const uv = cross([x, y, z], vector);
+  const uuv = cross([x, y, z], uv);
+  return vector.map((value, index) => value + 2 * (w * uv[index] + uuv[index]));
+}
+
+function slerp(first, second, amount) {
+  let target = second;
+  let cosine = dot(first, second);
+  if (cosine < 0) {
+    cosine = -cosine;
+    target = second.map((value) => -value);
+  }
+  if (cosine > .9995) {
+    return normalize(first.map((value, index) => value + amount * (target[index] - value)));
+  }
+  const angle = Math.acos(cosine);
+  const sine = Math.sin(angle);
+  return first.map((value, index) => (
+    Math.sin((1 - amount) * angle) / sine * value
+    + Math.sin(amount * angle) / sine * target[index]
+  ));
 }
 
 function multiply(a, b) {
@@ -117,12 +154,11 @@ const viewProjection = gl.getUniformLocation(program, "viewProjection");
 function appendBox(box, positions, colors) {
   const [cx, cy, cz] = box.position;
   const [sx, sy, sz] = box.size.map((value) => value / 2);
+  const rotation = box.rotation || [0, 0, 0, 1];
   const vertices = [
-    [cx - sx, cy - sy, cz - sz], [cx + sx, cy - sy, cz - sz],
-    [cx + sx, cy + sy, cz - sz], [cx - sx, cy + sy, cz - sz],
-    [cx - sx, cy - sy, cz + sz], [cx + sx, cy - sy, cz + sz],
-    [cx + sx, cy + sy, cz + sz], [cx - sx, cy + sy, cz + sz],
-  ];
+    [-sx, -sy, -sz], [sx, -sy, -sz], [sx, sy, -sz], [-sx, sy, -sz],
+    [-sx, -sy, sz], [sx, -sy, sz], [sx, sy, sz], [-sx, sy, sz],
+  ].map((vertex) => rotate(vertex, rotation).map((value, index) => value + [cx, cy, cz][index]));
   const faces = [
     [[0, 3, 2, 1], .50], [[4, 5, 6, 7], 1.05],
     [[0, 1, 5, 4], .72], [[1, 2, 6, 5], .82],
@@ -189,6 +225,63 @@ function applyScene(nextScene) {
   setStatus("Local preview", true);
 }
 
+function setBusy(busy) {
+  for (const id of ["push", "reset-tower"]) document.querySelector(`#${id}`).disabled = busy;
+}
+
+function applyFrame(frame) {
+  if (!scene) return;
+  const targets = new Map(frame.blocks.map((block) => [block.id, block]));
+  const starts = new Map(scene.blocks.map((block) => [
+    block.id,
+    { position: [...block.position], rotation: [...(block.rotation || [0, 0, 0, 1])] },
+  ]));
+  const started = performance.now();
+  if (animation) cancelAnimationFrame(animation);
+  function tick(now) {
+    const amount = clamp((now - started) / (1000 / 30), 0, 1);
+    for (const block of scene.blocks) {
+      const from = starts.get(block.id);
+      const to = targets.get(block.id);
+      block.position = from.position.map((value, index) => value + amount * (to.position[index] - value));
+      block.rotation = slerp(from.rotation, to.rotation, amount);
+    }
+    loadGeometry();
+    renderScene();
+    if (amount < 1) animation = requestAnimationFrame(tick);
+  }
+  animation = requestAnimationFrame(tick);
+  document.querySelector("#phase").textContent = frame.phase;
+  document.querySelector("#sim-time").textContent = Number(frame.sim_time).toFixed(2);
+  document.querySelector("#frame-count").textContent = String(frame.sequence + 1);
+}
+
+function connectSandbox() {
+  socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/sandbox`);
+  socket.addEventListener("open", () => setStatus("Local preview", true));
+  socket.addEventListener("close", () => setStatus("Sandbox disconnected"));
+  socket.addEventListener("message", (event) => {
+    const message = JSON.parse(event.data);
+    if (message.type === "frame") applyFrame(message);
+    if (message.type === "scene") applyScene(message.scene);
+    if (message.type === "result") {
+      setBusy(false);
+      document.querySelector("#outcome").textContent = message.outcome;
+      document.querySelector("#frame-count").textContent = String(message.frame_count);
+    }
+    if (message.type === "error") {
+      setBusy(false);
+      document.querySelector("#sandbox-error").textContent = message.message;
+    }
+  });
+}
+
+function updatePushOptions() {
+  const parity = Number(document.querySelector("#push-layer").value) % 2 ? "odd" : "even";
+  document.querySelector("#push-color").replaceChildren(...colorOptions[parity].map((value) => new Option(value)));
+  document.querySelector("#push-face").replaceChildren(...faceOptions[parity].map((value) => new Option(value)));
+}
+
 async function loadScene(path = "/api/state", method = "GET") {
   const response = await fetch(path, { method });
   if (!response.ok) throw new Error(`Scene load failed: ${response.status}`);
@@ -228,6 +321,30 @@ document.querySelector("#reset").addEventListener("click", async () => {
   }
 });
 
+document.querySelector("#push-layer").addEventListener("input", updatePushOptions);
+document.querySelector("#push").addEventListener("click", () => {
+  document.querySelector("#sandbox-error").textContent = "";
+  document.querySelector("#outcome").textContent = "-";
+  setBusy(true);
+  socket.send(JSON.stringify({
+    type: "Push",
+    layer: Number(document.querySelector("#push-layer").value),
+    color: document.querySelector("#push-color").value,
+    face: document.querySelector("#push-face").value,
+    contact: document.querySelector("#push-contact").value,
+    intensity: document.querySelector("#push-intensity").value,
+  }));
+});
+document.querySelector("#reset-tower").addEventListener("click", () => {
+  setBusy(true);
+  socket.send(JSON.stringify({ type: "Reset" }));
+  setBusy(false);
+  document.querySelector("#phase").textContent = "idle";
+  document.querySelector("#outcome").textContent = "-";
+  document.querySelector("#sim-time").textContent = "0.00";
+  document.querySelector("#frame-count").textContent = "0";
+});
+
 document.querySelector("#capture").addEventListener("click", async () => {
   loading.classList.add("visible");
   try {
@@ -251,4 +368,7 @@ document.querySelector("#capture").addEventListener("click", async () => {
   }
 });
 
+document.querySelector("#push-contact").replaceChildren(...contactOptions.map((value) => new Option(value)));
+updatePushOptions();
+connectSandbox();
 loadScene().catch((error) => setStatus(error.message));

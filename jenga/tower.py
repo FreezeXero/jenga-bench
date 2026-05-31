@@ -9,6 +9,7 @@ BLOCK_LENGTH = 0.075
 BLOCK_WIDTH = 0.025
 BLOCK_HEIGHT = 0.015
 BLOCK_MASS = 0.120
+BLOCK_CLEARANCE = 0.0002
 LAYER_COUNT = 18
 BLOCKS_PER_LAYER = 3
 
@@ -18,9 +19,11 @@ FLOOR_Z = -BASE_SIZE[2]
 FLOOR_SIZE = (4.0, 4.0, 0.01)
 FLOOR_CENTER_Z = FLOOR_Z - FLOOR_SIZE[2] / 2
 
-LATERAL_FRICTION = 0.01
-ROLLING_FRICTION = 0.02
-SPINNING_FRICTION = 0.02
+LATERAL_FRICTION = 0.40
+ROLLING_FRICTION = 0.0
+SPINNING_FRICTION = 0.0
+LINEAR_DAMPING = 0.04
+ANGULAR_DAMPING = 0.04
 
 
 class Orientation(str, Enum):
@@ -41,14 +44,14 @@ class SlotDefinition:
 
 
 NORTH_SOUTH_SLOTS = (
-    SlotDefinition("East", -BLOCK_WIDTH, "Red", (160, 72, 72)),
+    SlotDefinition("East", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Red", (160, 72, 72)),
     SlotDefinition("Middle", 0.0, "Lime", (120, 145, 70)),
-    SlotDefinition("West", BLOCK_WIDTH, "Blue", (70, 100, 165)),
+    SlotDefinition("West", BLOCK_WIDTH + BLOCK_CLEARANCE, "Blue", (70, 100, 165)),
 )
 EAST_WEST_SLOTS = (
-    SlotDefinition("South", -BLOCK_WIDTH, "Wintergreen", (64, 148, 127)),
+    SlotDefinition("South", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Wintergreen", (64, 148, 127)),
     SlotDefinition("Middle", 0.0, "Purple", (123, 84, 152)),
-    SlotDefinition("North", BLOCK_WIDTH, "Brown", (124, 91, 63)),
+    SlotDefinition("North", BLOCK_WIDTH + BLOCK_CLEARANCE, "Brown", (124, 91, 63)),
 )
 
 

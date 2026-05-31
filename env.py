@@ -33,6 +33,7 @@ class JengaBenchEnv(BaseEnv):
         self._consecutive_viewpoints = 0
         self._raw_points = 0.0
         self._terminated = False
+        self._termination_reason = ""
         self._seed: int | None = None
         self._simulation: JengaSimulation | None = None
 
@@ -45,6 +46,7 @@ class JengaBenchEnv(BaseEnv):
         self._consecutive_viewpoints = 0
         self._raw_points = 0.0
         self._terminated = False
+        self._termination_reason = ""
         self._seed = seed
         self._simulation = JengaSimulation()
         try:
@@ -64,6 +66,9 @@ class JengaBenchEnv(BaseEnv):
                 reward=INVALID_ACTION_PENALTY,
                 event="invalid_action: episode already terminated",
             )
+
+        if isinstance(action, dict) and action.get("type") == "Push":
+            return self._step_push(action)
 
         error = self._validate_change_viewpoint(action)
         if error is not None:
@@ -86,9 +91,33 @@ class JengaBenchEnv(BaseEnv):
             reward = VIEWPOINT_TIMEOUT_PENALTY
             self._raw_points += reward
             self._terminated = True
+            self._termination_reason = "viewpoint_timeout"
             event = "viewpoint_timeout"
 
         return self._result(reward=reward, event=event)
+
+    def _step_push(self, action: dict[str, Any]) -> StepResult:
+        if self._simulation is None:
+            raise RuntimeError("Call reset() before stepping")
+        from jenga.sim import PushRequest, PushValidationError
+
+        try:
+            request = PushRequest(
+                layer=action.get("layer"),
+                color=action.get("color"),
+                face=action.get("face"),
+                contact=action.get("contact"),
+                intensity=action.get("intensity"),
+            )
+            push_result = self._simulation.push(request)
+        except PushValidationError as exc:
+            self._raw_points += INVALID_ACTION_PENALTY
+            return self._result(reward=INVALID_ACTION_PENALTY, event=f"invalid_action: {exc}")
+
+        self._consecutive_viewpoints = 0
+        self._terminated = push_result.outcome in ("collapse", "extracted")
+        self._termination_reason = push_result.outcome if self._terminated else ""
+        return self._result(reward=0.0, event=f"push_{push_result.outcome}")
 
     def render(self, mode: str = "rgb_array") -> Any:
         if mode in ("rgb_array", "png"):
@@ -107,8 +136,13 @@ class JengaBenchEnv(BaseEnv):
             "blocks_removed": "0",
             "camera_state": json.dumps(self._camera_info(), sort_keys=True),
             "events": json.dumps([event]),
-            "termination_reason": "viewpoint_timeout" if self._terminated else "",
+            "termination_reason": self._termination_reason,
         }
+        if self._simulation is not None:
+            info["outcome"] = self._last_outcome()
+            info["frame_count"] = str(len(self._simulation.last_frames))
+            info["tower_state"] = json.dumps(self._tower_state(), sort_keys=True)
+            info["replay_frames"] = json.dumps(self._simulation.last_frames, sort_keys=True)
         result = StepResult(
             observation=self._render_png(),
             reward=reward,
@@ -125,9 +159,13 @@ class JengaBenchEnv(BaseEnv):
     def _system_prompt(self) -> str:
         return (
             "You are playing JengaBench. Use the image as the current camera view. "
-            "Only ChangeViewpoint is available in this contract slice. Return exactly one JSON "
-            'action: {"type":"ChangeViewpoint","azimuth":0..360,"pitch":-90..90,'
-            '"distance_cm":20..120}. '
+            "Return exactly one JSON action. Available actions: "
+            '{"type":"ChangeViewpoint","azimuth":0..360,"pitch":-90..90,'
+            '"distance_cm":20..120} or '
+            '{"type":"Push","layer":1..18,"color":"Red|Lime|Blue|Wintergreen|Purple|Brown",'
+            '"face":"North|South|East|West","contact":"top-left|top-center|top-right|'
+            'center-left|center|center-right|bottom-left|bottom-center|bottom-right",'
+            '"intensity":"Gentle|Firm|Hard"}. '
             f"Camera: azimuth={self._camera.azimuth:.2f}, pitch={self._camera.pitch:.2f}, "
             f"distance_cm={self._camera.distance_cm:.2f}. "
             f"Consecutive viewpoints: {self._consecutive_viewpoints}/{VIEWPOINT_LIMIT}. "
@@ -153,7 +191,7 @@ class JengaBenchEnv(BaseEnv):
         if not isinstance(action, dict):
             return "action must be a JSON object"
         if action.get("type") != "ChangeViewpoint":
-            return "only ChangeViewpoint is implemented in the static-tower milestone"
+            return "type must be ChangeViewpoint or Push"
         required = ("azimuth", "pitch", "distance_cm")
         missing = [field for field in required if field not in action]
         if missing:
@@ -171,6 +209,19 @@ class JengaBenchEnv(BaseEnv):
         if not 20.0 <= float(action["distance_cm"]) <= 120.0:
             return "distance_cm must be between 20 and 120"
         return None
+
+    def _last_outcome(self) -> str:
+        if self._simulation is None or not self._simulation.last_frames:
+            return ""
+        return str(self._simulation.last_frames[-1]["phase"])
+
+    def _tower_state(self) -> list[dict[str, Any]]:
+        if self._simulation is None:
+            return []
+        return [
+            {"id": internal_id, "position": position, "rotation": rotation}
+            for internal_id, position, rotation in self._simulation.transforms()
+        ]
 
     def _render_png(self) -> bytes:
         if self._simulation is None:
