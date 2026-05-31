@@ -43,6 +43,11 @@
             <option>Gentle</option><option>Firm</option><option>Hard</option>
           </select></label>
           <button id="push" type="button">Push block</button>
+          <label>Placement<select id="place-position">
+            <option>Left</option><option>Middle</option><option>Right</option>
+          </select></label>
+          <label>Rotation offset<input id="place-rotation" type="number" min="-5" max="5" step="1" value="0"></label>
+          <button id="place-back" type="button" disabled>Place block on top</button>
           <button id="reset-tower" class="secondary" type="button">Reset tower</button>
           <p id="sandbox-error" class="error"></p>
         </div>
