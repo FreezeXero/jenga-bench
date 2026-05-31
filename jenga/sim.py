@@ -711,6 +711,11 @@ class JengaSimulation:
             basePosition=(0.0, 0.0, FLOOR_CENTER_Z),
             physicsClientId=self.client_id,
         )
+        bullet.changeDynamics(
+            self.floor_body_id, -1,
+            restitution=PHYSICS.floor_restitution,
+            physicsClientId=self.client_id,
+        )
         base_half = tuple(value / 2 for value in BASE_SIZE)
         base_collision = bullet.createCollisionShape(
             bullet.GEOM_BOX, halfExtents=base_half, physicsClientId=self.client_id
@@ -732,6 +737,7 @@ class JengaSimulation:
             self.base_body_id,
             -1,
             lateralFriction=PHYSICS.lateral_friction,
+            restitution=PHYSICS.floor_restitution,
             physicsClientId=self.client_id,
         )
         bodies = []
@@ -764,7 +770,7 @@ class JengaSimulation:
             spinningFriction=PHYSICS.spinning_friction,
             linearDamping=PHYSICS.linear_damping,
             angularDamping=PHYSICS.angular_damping,
-            restitution=0.0,
+            restitution=PHYSICS.restitution,
             physicsClientId=self.client_id,
         )
         return BlockBody(spec=spec, body_id=body_id)

@@ -34,8 +34,10 @@ class PhysicsSettings:
     lateral_friction: float = 0.50
     rolling_friction: float = 0.0
     spinning_friction: float = 0.0
-    linear_damping: float = 0.04
-    angular_damping: float = 0.04
+    linear_damping: float = 0.0
+    angular_damping: float = 0.0
+    restitution: float = 0.7
+    floor_restitution: float = 0.95
     settle_timeout_seconds: float = 10.0
     viewer_collapse_tail_timeout_seconds: float = 5.0
     viewer_collapse_linear_velocity_threshold: float = 0.02
