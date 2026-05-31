@@ -260,7 +260,7 @@ class JengaSimulation:
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="ramp"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target)
-            if self._check_collapse(contact_snapshot, collapse_lost_steps):
+            if self._check_collapse(contact_snapshot, collapse_lost_steps, target.body_id):
                 if continue_after_collapse:
                     sequence, simulated_steps = self._settle_collapse_tail(
                         frames, sequence, simulated_steps, frame_callback
@@ -281,7 +281,7 @@ class JengaSimulation:
         )
         if not settled:
             logger.debug("failed to settle in time — checking final state")
-            if self._check_collapse(contact_snapshot, collapse_lost_steps):
+            if self._check_collapse(contact_snapshot, collapse_lost_steps, target.body_id):
                 outcome = "collapse"
             elif extracted:
                 outcome = "extracted"
@@ -563,10 +563,10 @@ class JengaSimulation:
                 snapshot[block.body_id] = vertical
         return snapshot
 
-    def _check_collapse(self, snapshot: dict[int, set[int]], lost_steps: dict[int, int]) -> bool:
+    def _check_collapse(self, snapshot: dict[int, set[int]], lost_steps: dict[int, int], target_id: int = -1) -> bool:
         ground_ids = {self.base_body_id, self.floor_body_id}
         for block in self.blocks:
-            if block.body_id in self.retired_body_ids or block.spec.layer == 1:
+            if block.body_id in self.retired_body_ids or block.spec.layer == 1 or block.body_id == target_id:
                 continue
             contacts = bullet.getContactPoints(bodyA=block.body_id, physicsClientId=self.client_id)
             if any(c[2] in ground_ids for c in contacts):
@@ -619,7 +619,7 @@ class JengaSimulation:
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="settle"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target)
-            if self._check_collapse(contact_snapshot, collapse_lost_steps):
+            if self._check_collapse(contact_snapshot, collapse_lost_steps, target.body_id):
                 return False, extracted, sequence, simulated_steps, settle_step
             if self._all_blocks_below_velocity_thresholds(ignored_body_id=target.body_id if extracted else None):
                 stable_steps += 1
