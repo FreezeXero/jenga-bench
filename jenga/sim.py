@@ -32,6 +32,7 @@ LINEAR_VELOCITY_THRESHOLD = PHYSICS.linear_velocity_threshold
 ANGULAR_VELOCITY_THRESHOLD = PHYSICS.angular_velocity_threshold
 RAMP_DURATION_SECONDS = PHYSICS.ramp_duration_seconds
 RAMP_STEPS = round(RAMP_DURATION_SECONDS / TIMESTEP)
+LATERAL_FRICTION = PHYSICS.lateral_friction
 FRAME_SAMPLE_STEPS = PHYSICS.frame_sample_steps
 MAX_TILT_DEGREES = PHYSICS.max_tilt_degrees
 BASE_HALF_WIDTH = BASE_SIZE[0] / 2
@@ -47,7 +48,8 @@ CONTACTS = (
     "bottom-center",
     "bottom-right",
 )
-INTENSITIES = dict(PHYSICS.intensities)
+VELOCITY_CAPS = dict(PHYSICS.intensities)
+PUSH_FORCE_MULTIPLIER = PHYSICS.push_force_multiplier
 VALID_FACES = {
     Orientation.NORTH_SOUTH: ("North", "South"),
     Orientation.EAST_WEST: ("East", "West"),
@@ -152,23 +154,32 @@ class JengaSimulation:
         sequence = 0
         simulated_steps = 0
 
-        direction = self._force_direction(request.face)
+        direction = self._force_direction_aligned(target, request.face)
         contact = self._world_contact_point(target, request)
-        peak_force = INTENSITIES[request.intensity]
+        load = self._get_load(target.body_id)
+        breakaway = load * LATERAL_FRICTION
+        peak_force = breakaway * PUSH_FORCE_MULTIPLIER
+        velocity_cap = VELOCITY_CAPS[request.intensity]
+        print(f"[push] load={load:.3f}N breakaway={breakaway:.3f}N peak={peak_force:.3f}N cap={velocity_cap}m/s")
         extracted = False
         for ramp_step in range(1, RAMP_STEPS + 1):
-            multiplier = math.sin(math.pi * ramp_step / (RAMP_STEPS + 1))
-            force = tuple(value * peak_force * multiplier for value in direction)
-            bullet.applyExternalForce(
-                target.body_id,
-                -1,
-                forceObj=force,
-                posObj=contact,
-                flags=bullet.WORLD_FRAME,
-                physicsClientId=self.client_id,
-            )
-            bullet.stepSimulation(physicsClientId=self.client_id)
-            simulated_steps += 1
+            speed = sum(v ** 2 for v in bullet.getBaseVelocity(target.body_id, physicsClientId=self.client_id)[0]) ** 0.5
+            if speed >= velocity_cap:
+                bullet.stepSimulation(physicsClientId=self.client_id)
+                simulated_steps += 1
+            else:
+                multiplier = math.sin(math.pi * ramp_step / (RAMP_STEPS + 1))
+                force = tuple(value * peak_force * multiplier for value in direction)
+                bullet.applyExternalForce(
+                    target.body_id,
+                    -1,
+                    forceObj=force,
+                    posObj=contact,
+                    flags=bullet.WORLD_FRAME,
+                    physicsClientId=self.client_id,
+                )
+                bullet.stepSimulation(physicsClientId=self.client_id)
+                simulated_steps += 1
             if ramp_step % FRAME_SAMPLE_STEPS == 0:
                 sequence += 1
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="ramp"))
@@ -180,7 +191,7 @@ class JengaSimulation:
                         frames, sequence, simulated_steps, frame_callback
                     )
                 return self._finish_push(
-                    "collapse", target, frames, sequence, simulated_steps, 0, frame_callback
+                    "collapse", target, frames, sequence, simulated_steps, 0, RAMP_STEPS, frame_callback
                 )
 
         settled, extracted, sequence, simulated_steps, settle_steps = self._settle_with_frames(
@@ -193,10 +204,10 @@ class JengaSimulation:
             extracted,
             frame_callback,
         )
-        if extracted:
-            outcome = "extracted"
-        elif not settled or self._has_obvious_collapse(target.body_id):
+        if not settled or self._has_obvious_collapse(target.body_id):
             outcome = "collapse"
+        elif extracted:
+            outcome = "extracted"
         else:
             outcome = "settled"
         if outcome == "collapse" and continue_after_collapse:
@@ -204,7 +215,7 @@ class JengaSimulation:
                 frames, sequence, simulated_steps, frame_callback
             )
         return self._finish_push(
-            outcome, target, frames, sequence, simulated_steps, settle_steps, frame_callback
+            outcome, target, frames, sequence, simulated_steps, settle_steps, RAMP_STEPS, frame_callback
         )
 
     def _finish_push(
@@ -215,6 +226,7 @@ class JengaSimulation:
         sequence: int,
         simulated_steps: int,
         settle_steps: int,
+        ramp_steps: int = RAMP_STEPS,
         frame_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> PushResult:
         self._zero_velocities()
@@ -253,7 +265,7 @@ class JengaSimulation:
             raise PushValidationError(f"face must be one of: {valid}")
         if request.contact not in CONTACTS:
             raise PushValidationError("contact must be one of the nine 3x3 grid positions")
-        if request.intensity not in INTENSITIES:
+        if request.intensity not in VELOCITY_CAPS:
             raise PushValidationError("intensity must be Gentle, Firm, or Hard")
         return target
 
@@ -273,14 +285,21 @@ class JengaSimulation:
         world, _ = bullet.multiplyTransforms(position, rotation, local, (0.0, 0.0, 0.0, 1.0))
         return tuple(world)
 
-    @staticmethod
-    def _force_direction(face: str) -> tuple[float, float, float]:
-        return {
+    def _get_load(self, body_id: int) -> float:
+        contacts = bullet.getContactPoints(bodyA=body_id, physicsClientId=self.client_id)
+        # Only count vertical contacts (weight from above/below), not side neighbors
+        return max(sum(c[9] for c in contacts if abs(c[7][2]) > 0.7), 0.01)
+
+    def _force_direction_aligned(self, target: BlockBody, face: str) -> tuple[float, float, float]:
+        local_dir = {
             "North": (0.0, -1.0, 0.0),
             "South": (0.0, 1.0, 0.0),
             "East": (-1.0, 0.0, 0.0),
             "West": (1.0, 0.0, 0.0),
         }[face]
+        _, rotation = bullet.getBasePositionAndOrientation(target.body_id, physicsClientId=self.client_id)
+        world_dir, _ = bullet.multiplyTransforms((0, 0, 0), rotation, local_dir, (0, 0, 0, 1))
+        return (world_dir[0], world_dir[1], 0.0)
 
     def _is_extracted(
         self, target: BlockBody, initial_position: tuple[float, ...], direction: tuple[float, ...]

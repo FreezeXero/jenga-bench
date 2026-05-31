@@ -16,8 +16,9 @@ const colorOptions = {
 };
 const faceOptions = { odd: ["North", "South"], even: ["East", "West"] };
 const contactOptions = [
+  "center",
   "top-left", "top-center", "top-right",
-  "center-left", "center", "center-right",
+  "center-left", "center-right",
   "bottom-left", "bottom-center", "bottom-right",
 ];
 
@@ -263,12 +264,16 @@ function connectSandbox() {
   socket.addEventListener("close", () => setStatus("Sandbox disconnected"));
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
+    console.log("[ws]", message.type, message);
     if (message.type === "frame") applyFrame(message);
     if (message.type === "scene") applyScene(message.scene);
     if (message.type === "result") {
       setBusy(false);
       document.querySelector("#outcome").textContent = message.outcome;
       document.querySelector("#frame-count").textContent = String(message.frame_count);
+      if (message.outcome === "collapse") {
+        document.querySelector("#push").disabled = true;
+      }
     }
     if (message.type === "error") {
       setBusy(false);

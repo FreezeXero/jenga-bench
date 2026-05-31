@@ -31,7 +31,7 @@ class PhysicsSettings:
     gravity: tuple[float, float, float] = (0.0, 0.0, -9.81)
     timestep: float = 1.0 / 240.0
     solver_iterations: int = 100
-    lateral_friction: float = 0.40
+    lateral_friction: float = 0.50
     rolling_friction: float = 0.0
     spinning_friction: float = 0.0
     linear_damping: float = 0.04
@@ -41,13 +41,14 @@ class PhysicsSettings:
     settle_stable_steps: int = 30
     linear_velocity_threshold: float = 2e-3
     angular_velocity_threshold: float = 2e-2
-    ramp_duration_seconds: float = 0.4
+    ramp_duration_seconds: float = 0.2
     frame_sample_steps: int = 8
     max_tilt_degrees: float = 20.0
+    push_force_multiplier: float = 1.5
     intensities: tuple[tuple[str, float], ...] = (
-        ("Gentle", 1.5),
-        ("Firm", 3.0),
-        ("Hard", 5.0),
+        ("Gentle", 0.05),
+        ("Firm", 0.15),
+        ("Hard", 0.40),
     )
 
 
