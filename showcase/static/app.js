@@ -127,39 +127,118 @@ function compileShader(type, source) {
   return shader;
 }
 
-function createProgram() {
-  if (!gl) throw new Error("WebGL is required for the local inspector");
-  const program = gl.createProgram();
-  gl.attachShader(program, compileShader(gl.VERTEX_SHADER, `
+const SHADOW_SIZE = 2048;
+const lightDir = normalize([3.0, -4.0, 6.0]);
+
+function createDepthProgram() {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, `
     attribute vec3 position;
-    attribute vec3 color;
-    uniform mat4 viewProjection;
-    varying vec3 faceColor;
+    uniform mat4 lightMatrix;
     void main() {
-      gl_Position = viewProjection * vec4(position, 1.0);
-      faceColor = color;
+      gl_Position = lightMatrix * vec4(position, 1.0);
     }
   `));
-  gl.attachShader(program, compileShader(gl.FRAGMENT_SHADER, `
+  gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, `
     precision mediump float;
-    varying vec3 faceColor;
     void main() {
-      gl_FragColor = vec4(faceColor, 1.0);
+      gl_FragColor = vec4(gl_FragCoord.z, 0.0, 0.0, 1.0);
     }
   `));
-  gl.linkProgram(program);
-  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-    throw new Error(gl.getProgramInfoLog(program));
-  }
-  return program;
+  gl.linkProgram(prog);
+  return prog;
 }
 
-const program = createProgram();
+function createMainProgram() {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, `
+    attribute vec3 position;
+    attribute vec3 color;
+    attribute vec3 normal;
+    uniform mat4 viewProjection;
+    uniform mat4 lightMatrix;
+    uniform vec3 lightDir;
+    varying vec3 faceColor;
+    varying vec3 faceNormal;
+    varying vec4 shadowCoord;
+    void main() {
+      gl_Position = viewProjection * vec4(position, 1.0);
+      shadowCoord = lightMatrix * vec4(position, 1.0);
+      faceColor = color;
+      faceNormal = normal;
+    }
+  `));
+  gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, `
+    precision mediump float;
+    varying vec3 faceColor;
+    varying vec3 faceNormal;
+    varying vec4 shadowCoord;
+    uniform sampler2D shadowMap;
+    uniform vec3 lightDir;
+    void main() {
+      vec3 sc = shadowCoord.xyz / shadowCoord.w * 0.5 + 0.5;
+      float shadow = 1.0;
+      if (sc.x >= 0.0 && sc.x <= 1.0 && sc.y >= 0.0 && sc.y <= 1.0) {
+        float bias = max(0.02 * (1.0 - dot(faceNormal, lightDir)), 0.005);
+        float closest = texture2D(shadowMap, sc.xy).r;
+        shadow = sc.z - bias > closest ? 0.0 : 1.0;
+      }
+      float diffuse = max(dot(faceNormal, lightDir), 0.0) * 0.35 * shadow;
+      float ambient = 0.75;
+      gl_FragColor = vec4(faceColor * min(ambient + diffuse, 1.0), 1.0);
+    }
+  `));
+  gl.linkProgram(prog);
+  return prog;
+}
+
+function createShadowFramebuffer() {
+  const ext = gl.getExtension("WEBGL_depth_texture");
+  if (!ext) {
+    console.warn("No depth texture support — shadows disabled");
+    return null;
+  }
+  const fb = gl.createFramebuffer();
+  const tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT, SHADOW_SIZE, SHADOW_SIZE, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, tex, 0);
+  const colorTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, colorTex);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SHADOW_SIZE, SHADOW_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, colorTex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { framebuffer: fb, depthTexture: tex };
+}
+
+function ortho(size, near, far) {
+  return [
+    1 / size, 0, 0, 0,
+    0, 1 / size, 0, 0,
+    0, 0, -2 / (far - near), 0,
+    0, 0, -(far + near) / (far - near), 1,
+  ];
+}
+
+function lightMatrix() {
+  const target = scene ? scene.target : [0, 0, 0.135];
+  const lightPos = target.map((v, i) => v + lightDir[i] * 0.8);
+  return multiply(ortho(0.5, 0.01, 2.0), lookAt(lightPos, target));
+}
+
+const depthProgram = createDepthProgram();
+const mainProgram = createMainProgram();
+const shadowFB = createShadowFramebuffer();
 const positionBuffer = gl.createBuffer();
 const colorBuffer = gl.createBuffer();
-const viewProjection = gl.getUniformLocation(program, "viewProjection");
+const normalBuffer = gl.createBuffer();
 
-function appendBox(box, positions, colors) {
+function appendBox(box, positions, colors, normals) {
   const [cx, cy, cz] = box.position;
   const [sx, sy, sz] = box.size.map((value) => value / 2);
   const rotation = box.rotation || [0, 0, 0, 1];
@@ -167,15 +246,22 @@ function appendBox(box, positions, colors) {
     [-sx, -sy, -sz], [sx, -sy, -sz], [sx, sy, -sz], [-sx, sy, -sz],
     [-sx, -sy, sz], [sx, -sy, sz], [sx, sy, sz], [-sx, sy, sz],
   ].map((vertex) => rotate(vertex, rotation).map((value, index) => value + [cx, cy, cz][index]));
+  const faceNormals = [
+    [0, 0, -1], [0, 0, 1],
+    [0, -1, 0], [1, 0, 0],
+    [0, 1, 0], [-1, 0, 0],
+  ].map((n) => rotate(n, rotation));
   const faces = [
-    [[0, 3, 2, 1], .50], [[4, 5, 6, 7], 1.05],
-    [[0, 1, 5, 4], .72], [[1, 2, 6, 5], .82],
-    [[2, 3, 7, 6], .66], [[3, 0, 4, 7], .76],
+    [0, 3, 2, 1], [4, 5, 6, 7],
+    [0, 1, 5, 4], [1, 2, 6, 5],
+    [2, 3, 7, 6], [3, 0, 4, 7],
   ];
-  for (const [indices, shade] of faces) {
+  const rgb = box.color.map((channel) => channel / 255);
+  for (let i = 0; i < faces.length; i++) {
     for (const index of [0, 1, 2, 0, 2, 3]) {
-      positions.push(...vertices[indices[index]]);
-      colors.push(...box.color.map((channel) => channel / 255 * shade));
+      positions.push(...vertices[faces[i][index]]);
+      colors.push(...rgb);
+      normals.push(...faceNormals[i]);
     }
   }
 }
@@ -183,16 +269,27 @@ function appendBox(box, positions, colors) {
 function loadGeometry() {
   const positions = [];
   const colors = [];
-  for (const box of [scene.base, ...scene.blocks]) appendBox(box, positions, colors);
+  const normals = [];
+  for (const box of [scene.base, ...scene.blocks]) appendBox(box, positions, colors, normals);
   vertexCount = positions.length / 3;
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+}
+
+function bindPositions(prog) {
+  const pos = gl.getAttribLocation(prog, "position");
+  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
+  gl.vertexAttribPointer(pos, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(pos);
 }
 
 function renderScene() {
   if (!scene) return;
+  const lm = lightMatrix();
   const yaw = camera.azimuth * Math.PI / 180;
   const pitch = camera.pitch * Math.PI / 180;
   const distance = camera.distance_cm / 100;
@@ -205,22 +302,40 @@ function renderScene() {
     perspective(52, canvas.width / canvas.height, .02, 3),
     lookAt(eye, scene.target),
   );
-  gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.clearColor(1, 1, 1, 1);
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-  gl.useProgram(program);
-  gl.uniformMatrix4fv(viewProjection, false, matrix);
-  const position = gl.getAttribLocation(program, "position");
-  gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
-  gl.vertexAttribPointer(position, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(position);
-  const color = gl.getAttribLocation(program, "color");
-  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
-  gl.vertexAttribPointer(color, 3, gl.FLOAT, false, 0, 0);
-  gl.enableVertexAttribArray(color);
   gl.enable(gl.DEPTH_TEST);
   gl.enable(gl.CULL_FACE);
   gl.cullFace(gl.BACK);
+  if (shadowFB) {
+    gl.bindFramebuffer(gl.FRAMEBUFFER, shadowFB.framebuffer);
+    gl.viewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.useProgram(depthProgram);
+    gl.uniformMatrix4fv(gl.getUniformLocation(depthProgram, "lightMatrix"), false, lm);
+    bindPositions(depthProgram);
+    gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+  gl.viewport(0, 0, canvas.width, canvas.height);
+  gl.clearColor(1, 1, 1, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  gl.useProgram(mainProgram);
+  gl.uniformMatrix4fv(gl.getUniformLocation(mainProgram, "viewProjection"), false, matrix);
+  gl.uniformMatrix4fv(gl.getUniformLocation(mainProgram, "lightMatrix"), false, lm);
+  gl.uniform3fv(gl.getUniformLocation(mainProgram, "lightDir"), lightDir);
+  if (shadowFB) {
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, shadowFB.depthTexture);
+    gl.uniform1i(gl.getUniformLocation(mainProgram, "shadowMap"), 0);
+  }
+  bindPositions(mainProgram);
+  const color = gl.getAttribLocation(mainProgram, "color");
+  gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
+  gl.vertexAttribPointer(color, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(color);
+  const normal = gl.getAttribLocation(mainProgram, "normal");
+  gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
+  gl.vertexAttribPointer(normal, 3, gl.FLOAT, false, 0, 0);
+  gl.enableVertexAttribArray(normal);
   gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
 }
 
