@@ -1,65 +1,494 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>JengaBench Live Inspector</title>
-    <link rel="stylesheet" href="/static/styles.css?v=6">
-  </head>
-  <body>
-    <main class="layout">
-      <section class="panel">
-        <div class="heading">
-          <div>
-            <p class="eyebrow">JengaBench</p>
-            <h1>Live Tower Inspector</h1>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>JengaBench</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css?v=15">
+</head>
+<body>
+
+  <header class="topbar">
+    <div class="topbar-left">
+      <div class="brand">
+        <div class="brand-icon">
+          <svg viewBox="0 0 18 18" fill="none">
+            <rect x="1" y="11.5" width="16" height="3" rx="1.2" fill="currentColor"/>
+            <rect x="3.5" y="7.5" width="11" height="3" rx="1.2" fill="currentColor"/>
+            <rect x="1" y="3.5" width="16" height="3" rx="1.2" fill="currentColor"/>
+          </svg>
+        </div>
+        <span class="brand-text">Jenga<em>Bench</em></span>
+      </div>
+      <div class="topbar-pill">SWECCathon 2026</div>
+    </div>
+    <nav class="topbar-nav">
+      <button class="nav-tab active" onclick="showTab('inspector', this)">Inspector</button>
+      <button class="nav-tab" onclick="showTab('results', this)">Results</button>
+    </nav>
+    <div class="topbar-right">
+      <button id="capture" class="btn btn-sm">Capture PNG</button>
+      <button id="reset" class="btn btn-sm btn-outline">Reset camera</button>
+      <button class="theme-btn" id="theme-toggle" title="Toggle theme">
+        <svg class="icon-dark" viewBox="0 0 16 16"><path d="M13.5 10.5A6 6 0 0 1 5.5 2.5a6 6 0 1 0 8 8z" fill="currentColor"/></svg>
+        <svg class="icon-light" viewBox="0 0 16 16"><circle cx="8" cy="8" r="2.8" fill="currentColor"/><line x1="8" y1="1" x2="8" y2="3.2" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="8" y1="12.8" x2="8" y2="15" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="1" y1="8" x2="3.2" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="12.8" y1="8" x2="15" y2="8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="3.05" y1="3.05" x2="4.6" y2="4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="11.4" y1="11.4" x2="12.95" y2="12.95" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="12.95" y1="3.05" x2="11.4" y2="4.6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><line x1="4.6" y1="11.4" x2="3.05" y2="12.95" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- ═══ INSPECTOR ═══ -->
+  <div class="tab-content active" id="tab-inspector">
+    <div class="inspector-layout">
+      <div class="viewport-col">
+        <div class="viewport-wrapper">
+          <div id="viewport">
+            <canvas id="frame" width="512" height="512"></canvas>
+            <div id="loading"><span class="spinner"></span>Capturing</div>
+            <div class="viewport-hint">Drag to orbit · Scroll to zoom</div>
+            <div class="collapse-flash" id="collapse-flash"></div>
+            <div class="viewport-status"><span class="vs-dot" id="vs-dot"></span><span id="status">Connecting</span></div>
           </div>
-          <div class="actions">
-            <button id="capture" type="button">Capture PNG</button>
-            <button id="reset" type="button">Reset camera</button>
+        </div>
+        <div class="status-strip">
+          <div class="ss-item"><span class="ss-label">Phase</span><span class="ss-val highlight" id="phase">idle</span></div>
+          <div class="ss-sep"></div>
+          <div class="ss-item"><span class="ss-label">Outcome</span><span class="ss-val" id="outcome">—</span></div>
+          <div class="ss-sep"></div>
+          <div class="ss-item"><span class="ss-label">Sim</span><span class="ss-val mono"><span id="sim-time">0.00</span>s</span></div>
+          <div class="ss-sep"></div>
+          <div class="ss-item"><span class="ss-label">Frames</span><span class="ss-val mono" id="frame-count">0</span></div>
+        </div>
+      </div>
+
+      <aside class="controls-col">
+        <!-- CAMERA -->
+        <div class="card">
+          <div class="card-header"><span class="chip">Camera</span></div>
+          <div class="cam-row">
+            <div class="cam-cell"><div class="cam-val" id="azimuth">225.00</div><div class="cam-label">Azimuth</div></div>
+            <div class="cam-divider"></div>
+            <div class="cam-cell"><div class="cam-val" id="pitch">15.00</div><div class="cam-label">Pitch</div></div>
+            <div class="cam-divider"></div>
+            <div class="cam-cell"><div class="cam-val" id="distance">45.00</div><div class="cam-label">Distance</div></div>
           </div>
         </div>
-        <div id="viewport" class="viewport" aria-label="Drag to orbit and scroll to zoom">
-          <canvas id="frame" width="512" height="512" aria-label="Local live tower preview"></canvas>
-          <div id="loading" class="loading">Capturing PNG</div>
+
+        <!-- PUSH -->
+        <div class="card">
+          <div class="card-header"><span class="chip">Push Block</span></div>
+          <div class="form-grid">
+            <div class="form-field full">
+              <label class="form-label">Layer</label>
+              <input id="push-layer" class="form-input" type="number" min="1" max="18" value="8">
+            </div>
+
+            <!-- COLOR as pills -->
+            <div class="form-field full">
+              <label class="form-label">Color</label>
+              <div class="pill-group" id="color-pills">
+                <button class="pill active" data-val="Red">Red</button>
+                <button class="pill" data-val="Lime">Lime</button>
+                <button class="pill" data-val="Blue">Blue</button>
+              </div>
+              <select id="push-color" class="hidden"></select>
+            </div>
+
+            <!-- FACE as pills -->
+            <div class="form-field full">
+              <label class="form-label">Face</label>
+              <div class="pill-group" id="face-pills">
+                <button class="pill active" data-val="North">North</button>
+                <button class="pill" data-val="South">South</button>
+              </div>
+              <select id="push-face" class="hidden"></select>
+            </div>
+
+            <!-- CONTACT as 3x3 grid -->
+            <div class="form-field full">
+              <label class="form-label">Contact point</label>
+              <div class="pill-group grid-3x3" id="contact-grid">
+                <button class="pill" data-val="top-left">↖</button>
+                <button class="pill" data-val="top-center">↑</button>
+                <button class="pill" data-val="top-right">↗</button>
+                <button class="pill" data-val="center-left">←</button>
+                <button class="pill active" data-val="center">●</button>
+                <button class="pill" data-val="center-right">→</button>
+                <button class="pill" data-val="bottom-left">↙</button>
+                <button class="pill" data-val="bottom-center">↓</button>
+                <button class="pill" data-val="bottom-right">↘</button>
+              </div>
+              <select id="push-contact" class="hidden"></select>
+            </div>
+
+            <!-- STRENGTH as pills -->
+            <div class="form-field full">
+              <label class="form-label">Strength</label>
+              <div class="pill-group" id="strength-pills">
+                <button class="pill active" data-val="Gentle">Gentle</button>
+                <button class="pill" data-val="Firm">Firm</button>
+                <button class="pill" data-val="Hard">Hard</button>
+              </div>
+              <select id="push-intensity" class="hidden">
+                <option>Gentle</option><option>Firm</option><option>Hard</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button id="push" class="btn btn-accent full-w">Push block</button>
+            <p id="sandbox-error" class="form-error"></p>
+          </div>
         </div>
-        <p class="hint">Drag to orbit. Scroll to zoom. Local preview controls are unscored.</p>
-      </section>
-      <aside class="metadata">
-        <p class="eyebrow">Camera state</p>
-        <dl>
-          <div><dt>Azimuth</dt><dd><span id="azimuth">225.00</span>&deg;</dd></div>
-          <div><dt>Pitch</dt><dd><span id="pitch">15.00</span>&deg;</dd></div>
-          <div><dt>Distance</dt><dd><span id="distance">45.00</span> cm</dd></div>
-        </dl>
-        <p class="eyebrow">Push sandbox</p>
-        <div class="sandbox-form">
-          <label>Seed<input id="tower-seed" type="number" step="1" value="0"></label>
-          <label>Layer<input id="push-layer" type="number" min="1" max="18" value="8"></label>
-          <label>Color<select id="push-color"></select></label>
-          <label>Face<select id="push-face"></select></label>
-          <label>Contact<select id="push-contact"></select></label>
-          <label>Strength<select id="push-intensity">
-            <option>Gentle</option><option>Firm</option><option>Hard</option>
-          </select></label>
-          <button id="push" type="button">Push block</button>
-          <label>Placement<select id="place-position">
-            <option>Left</option><option>Middle</option><option>Right</option>
-          </select></label>
-          <label>Rotation offset<input id="place-rotation" type="number" min="-5" max="5" step="1" value="0"></label>
-          <button id="place-back" type="button" disabled>Place block on top</button>
-          <button id="reset-tower" class="secondary" type="button">Reset tower</button>
-          <p id="sandbox-error" class="error"></p>
+
+        <!-- PLACE BACK -->
+        <div class="card">
+          <div class="card-header"><span class="chip">Place Back</span></div>
+          <div class="form-grid">
+            <div class="form-field full">
+              <label class="form-label">Placement</label>
+              <div class="pill-group" id="placement-pills">
+                <button class="pill active" data-val="Left">Left</button>
+                <button class="pill" data-val="Middle">Middle</button>
+                <button class="pill" data-val="Right">Right</button>
+              </div>
+              <select id="place-position" class="hidden">
+                <option>Left</option><option>Middle</option><option>Right</option>
+              </select>
+            </div>
+          </div>
+          <div class="card-actions">
+            <button id="place-back" class="btn btn-accent full-w" disabled>Place block on top</button>
+            <button id="reset-tower" class="btn btn-ghost full-w">Reset tower</button>
+          </div>
+          <!-- hidden rotation field still needed by app.js -->
+          <input id="place-rotation" type="number" value="0" class="hidden"><input id="tower-seed" type="number" value="0" class="hidden">
         </div>
-        <dl class="sandbox-state">
-          <div><dt>Phase</dt><dd id="phase">idle</dd></div>
-          <div><dt>Outcome</dt><dd id="outcome">-</dd></div>
-          <div><dt>Sim time</dt><dd><span id="sim-time">0.00</span>s</dd></div>
-          <div><dt>Frames</dt><dd id="frame-count">0</dd></div>
-        </dl>
-        <div class="status"><span id="status-dot"></span><span id="status">Connecting</span></div>
       </aside>
-    </main>
-    <script src="/static/app.js?v=7"></script>
-  </body>
+    </div>
+  </div>
+
+  <!-- ═══ RESULTS ═══ -->
+  <div class="tab-content" id="tab-results">
+    <div class="results-layout">
+      <div class="results-main">
+        <div class="results-header">
+          <div>
+            <div class="results-title">Model Leaderboard</div>
+            <div class="results-sub">Ranked by normalized score · Same tower seed for all models</div>
+          </div>
+          <div class="results-seed-info">Seed: <span class="mono highlight" id="results-seed">—</span></div>
+        </div>
+
+        <!-- MODEL SELECTOR TABS -->
+        <div class="model-tabs" id="model-tabs"></div>
+
+        <div class="leaderboard" id="leaderboard"></div>
+
+        <div class="episode-section">
+          <div class="episode-header">
+            <span class="chip">Episode Replay</span>
+            <div class="replay-nav">
+              <button class="btn btn-sm btn-outline" onclick="prevStep()">← Prev</button>
+              <span class="replay-counter mono" id="replay-counter">— / —</span>
+              <button class="btn btn-sm btn-outline" onclick="nextStep()">Next →</button>
+            </div>
+          </div>
+          <div class="step-timeline" id="step-timeline"></div>
+          <div class="step-detail" id="step-detail">
+            <div class="empty-state">Load demo data or a results file to see the replay</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="results-side">
+        <div class="card">
+          <div class="card-header"><span class="chip">Overview</span></div>
+          <div class="stat-grid">
+            <div class="stat-cell"><div class="stat-val highlight mono" id="stat-top">—</div><div class="stat-label">Top score</div></div>
+            <div class="stat-cell"><div class="stat-val mono" id="stat-blocks">—</div><div class="stat-label">Max blocks</div></div>
+            <div class="stat-cell"><div class="stat-val mono" id="stat-episodes">—</div><div class="stat-label">Episodes</div></div>
+            <div class="stat-cell"><div class="stat-val mono" id="stat-models">—</div><div class="stat-label">Models</div></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="chip">Data</span></div>
+          <div class="load-section">
+            <button class="btn btn-accent full-w" onclick="loadDemoResults()">Load demo data</button>
+            <div class="load-status" id="load-status">No data loaded</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <span id="status-dot" style="display:none"></span>
+
+  <script src="/static/app.js?v=7"></script>
+  <script>
+  // ── CANVAS BG FIX ──
+  const _origClear = gl.clearColor.bind(gl);
+  gl.clearColor = function(r, g, b, a) {
+    if (r === 1 && g === 1 && b === 1) {
+      const light = document.documentElement.getAttribute('data-theme') === 'light';
+      light ? _origClear(0.91, 0.88, 0.82, 1) : _origClear(1.0, 0.97, 0.94, 1);
+    } else { _origClear(r, g, b, a); }
+  };
+
+  // ── THEME ──
+  const root = document.documentElement;
+  const savedTheme = localStorage.getItem('theme') || 'dark';
+if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
+  document.getElementById('theme-toggle').addEventListener('click', () => {
+    const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    root.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    if (typeof renderScene === 'function') renderScene();
+  });
+
+  // ── TABS ──
+  function showTab(name, btn) {
+    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+    document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+  }
+
+  // ── PILL GROUPS ──
+  function bindPills(groupId, selectId, onchange) {
+    document.querySelectorAll(`#${groupId} .pill`).forEach(pill => {
+      pill.addEventListener('click', () => {
+        document.querySelectorAll(`#${groupId} .pill`).forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+        const sel = document.getElementById(selectId);
+        if (sel) sel.value = pill.dataset.val;
+        if (onchange) onchange(pill.dataset.val);
+      });
+    });
+  }
+
+  // update color + face pills when layer changes
+  function updateLayerDependentPills() {
+    const layer = Number(document.getElementById('push-layer').value);
+    const isOdd = layer % 2 === 1;
+    const colors = isOdd ? ['Red','Lime','Blue'] : ['Wintergreen','Purple','Brown'];
+    const faces = isOdd ? ['North','South'] : ['East','West'];
+
+    const colorGroup = document.getElementById('color-pills');
+    colorGroup.innerHTML = colors.map((c,i) =>
+      `<button class="pill${i===0?' active':''}" data-val="${c}">${c}</button>`
+    ).join('');
+    document.getElementById('push-color').value = colors[0];
+    bindPills('color-pills', 'push-color');
+
+    const faceGroup = document.getElementById('face-pills');
+    faceGroup.innerHTML = faces.map((f,i) =>
+      `<button class="pill${i===0?' active':''}" data-val="${f}">${f}</button>`
+    ).join('');
+    document.getElementById('push-face').value = faces[0];
+    bindPills('face-pills', 'push-face');
+
+    // also update the hidden selects to match app.js expectations
+    const colorSel = document.getElementById('push-color');
+    colorSel.innerHTML = colors.map(c => `<option>${c}</option>`).join('');
+    colorSel.value = colors[0];
+    const faceSel = document.getElementById('push-face');
+    faceSel.innerHTML = faces.map(f => `<option>${f}</option>`).join('');
+    faceSel.value = faces[0];
+  }
+
+  document.getElementById('push-layer').addEventListener('input', updateLayerDependentPills);
+  updateLayerDependentPills();
+
+  bindPills('contact-grid', 'push-contact');
+  bindPills('strength-pills', 'push-intensity');
+  bindPills('placement-pills', 'place-position');
+
+  // init contact select
+  const contactSel = document.getElementById('push-contact');
+  contactSel.innerHTML = ['center','top-left','top-center','top-right','center-left','center-right','bottom-left','bottom-center','bottom-right'].map(c=>`<option>${c}</option>`).join('');
+  contactSel.value = 'center';
+
+  // ── PHASE-AWARE UI: show push OR place-back, never both ──
+  function updatePhaseUI() {
+    const phase = document.getElementById('phase').textContent.trim().toLowerCase();
+    const isPlaceBack = phase === 'place_back';
+    // push controls
+    document.getElementById('push').classList.toggle('hidden', isPlaceBack);
+    document.querySelectorAll('#contact-grid, #strength-pills, #color-pills, #face-pills').forEach(el => {
+      if (el) el.closest('.form-field')?.classList.toggle('hidden', isPlaceBack);
+    });
+    // place-back controls
+    document.getElementById('place-back').classList.toggle('hidden', !isPlaceBack);
+    const ps = document.getElementById('placement-section');
+    if (ps) ps.classList.toggle('hidden', !isPlaceBack);
+  }
+
+  new MutationObserver(updatePhaseUI).observe(
+    document.getElementById('phase'),
+    { childList: true, characterData: true, subtree: true }
+  );
+  updatePhaseUI();
+
+  // ── COLLAPSE FLASH ──
+  const outcomeEl = document.getElementById('outcome');
+  const flashEl = document.getElementById('collapse-flash');
+  new MutationObserver(() => {
+    const val = outcomeEl.textContent.trim().toLowerCase();
+    outcomeEl.className = 'ss-val' + (val==='collapse'?' red':val==='extracted'?' green':'');
+    if (val === 'collapse') {
+      flashEl.classList.remove('active');
+      void flashEl.offsetWidth;
+      flashEl.classList.add('active');
+    }
+  }).observe(outcomeEl, { childList: true, characterData: true, subtree: true });
+
+  // mirror status dot
+  new MutationObserver(() => {
+    document.getElementById('vs-dot').classList.toggle('ok', document.getElementById('status-dot').classList.contains('ok'));
+  }).observe(document.getElementById('status-dot'), { attributes: true });
+
+  // ── RESULTS ──
+  const DEMO_DATA = {
+    seed: 42,
+    models: [
+      { name: "Claude Opus 4.7", score: 91.2, blocks: 16, episodes: 3, invalid: 1, color: "#e87b24",
+        steps: [
+          { step:1, type:"look", action:{type:"ChangeViewpoint",azimuth:180,pitch:15,distance_cm:45}, reasoning:"Assessing tower stability from south before committing to any push.", reward:0, terminated:false },
+          { step:2, type:"push", action:{type:"Push",layer:4,color:"Blue",face:"West",contact:"center",intensity:"Gentle"}, reasoning:"Layer 4 center block appears well-supported. Gentle west push should extract cleanly.", reward:0, terminated:false },
+          { step:3, type:"push", action:{type:"Push",layer:7,color:"Red",face:"East",contact:"center-right",intensity:"Firm"}, reasoning:"Layer 7 overhangs on the right. Center-right extraction redistributes load to remaining blocks.", reward:0, terminated:false },
+        ]
+      },
+      { name: "GPT-4o", score: 74.5, blocks: 12, episodes: 3, invalid: 4, color: "#5da8d6",
+        steps: [
+          { step:1, type:"push", action:{type:"Push",layer:8,color:"Lime",face:"North",contact:"center",intensity:"Gentle"}, reasoning:"Starting with middle layer — lower structural risk.", reward:0, terminated:false },
+          { step:2, type:"push", action:{type:"Push",layer:3,color:"Red",face:"South",contact:"top-left",intensity:"Hard"}, reasoning:"Aggressive lower extraction attempt.", reward:-0.5, terminated:true },
+        ]
+      },
+      { name: "Gemini 1.5 Pro", score: 61.8, blocks: 9, episodes: 3, invalid: 6, color: "#3aba6e",
+        steps: [
+          { step:1, type:"look", action:{type:"ChangeViewpoint",azimuth:90,pitch:20,distance_cm:50}, reasoning:"Initial survey of east face.", reward:0, terminated:false },
+          { step:2, type:"push", action:{type:"Push",layer:5,color:"Blue",face:"East",contact:"center",intensity:"Gentle"}, reasoning:"Conservative center extraction on layer 5.", reward:0, terminated:false },
+        ]
+      },
+    ]
+  };
+
+  let currentSteps = [];
+  let currentStepIdx = 0;
+  let resultsData = null;
+
+  function renderResults(data) {
+    resultsData = data;
+    document.getElementById('results-seed').textContent = data.seed ?? '—';
+    const max = Math.max(...data.models.map(m => m.score));
+    document.getElementById('stat-top').textContent = max.toFixed(1);
+    document.getElementById('stat-blocks').textContent = Math.max(...data.models.map(m => m.blocks));
+    document.getElementById('stat-episodes').textContent = data.models[0]?.episodes ?? '—';
+    document.getElementById('stat-models').textContent = data.models.length;
+
+    // model selector tabs
+    const tabs = document.getElementById('model-tabs');
+    tabs.innerHTML = '';
+    data.models.forEach((m, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'model-tab' + (i === 0 ? ' active' : '');
+      btn.style.setProperty('--model-color', m.color);
+      btn.innerHTML = `<span class="model-tab-dot"></span>${m.name}`;
+      btn.onclick = () => {
+        document.querySelectorAll('.model-tab').forEach(t => t.classList.remove('active'));
+        btn.classList.add('active');
+        renderLeaderboardForModel(data, i);
+      };
+      tabs.appendChild(btn);
+    });
+
+    renderLeaderboard(data);
+    renderLeaderboardForModel(data, 0);
+    document.getElementById('load-status').textContent = 'Data loaded';
+  }
+
+  function renderLeaderboard(data) {
+    const lb = document.getElementById('leaderboard');
+    lb.innerHTML = '';
+    const max = Math.max(...data.models.map(m => m.score));
+    [...data.models].sort((a,b) => b.score - a.score).forEach((m, i) => {
+      const pct = Math.round(m.score / max * 100);
+      const row = document.createElement('div');
+      row.className = 'lb-row';
+      row.innerHTML = `
+        <div class="lb-rank">${i+1}</div>
+        <div class="lb-info">
+          <div class="lb-name"><div class="lb-dot" style="background:${m.color}"></div><span>${m.name}</span></div>
+          <div class="lb-bar-wrap"><div class="lb-bar" style="width:0%;background:${m.color}"></div></div>
+          <div class="lb-meta">${m.blocks} blocks · ${m.invalid} invalid · ${m.episodes} episodes</div>
+        </div>
+        <div class="lb-score-area">
+          <div class="lb-score">${m.score.toFixed(1)}</div>
+          <div class="lb-score-label">Score</div>
+        </div>
+      `;
+      lb.appendChild(row);
+      setTimeout(() => row.querySelector('.lb-bar').style.width = pct + '%', 60 + i * 100);
+    });
+  }
+
+  function renderLeaderboardForModel(data, idx) {
+    currentSteps = data.models[idx]?.steps || [];
+    currentStepIdx = 0;
+    renderTimeline();
+    if (currentSteps.length) showStep(0);
+  }
+
+  function renderTimeline() {
+    const tl = document.getElementById('step-timeline');
+    tl.innerHTML = '';
+    currentSteps.forEach((s, i) => {
+      const el = document.createElement('button');
+      el.className = 'step-pill' + (s.type==='look'?' look':s.terminated?' fail':' push') + (i===currentStepIdx?' active':'');
+      el.innerHTML = (s.type==='look'?'👁':'👆') + ` ${s.step}`;
+      el.onclick = () => showStep(i);
+      tl.appendChild(el);
+    });
+    document.getElementById('replay-counter').textContent = currentSteps.length ? `${currentStepIdx+1} / ${currentSteps.length}` : '— / —';
+  }
+
+  function showStep(idx) {
+    currentStepIdx = idx;
+    const s = currentSteps[idx];
+    const detail = document.getElementById('step-detail');
+    const typeLabel = s.type==='look'?'LOOK':s.terminated?'COLLAPSE':'PUSH';
+    const typeClass = s.type==='look'?'blue':s.terminated?'red':'';
+    const rewardStr = s.reward>0?`+${s.reward.toFixed(1)}`:s.reward<0?s.reward.toFixed(1):'0';
+    const rewardClass = s.reward>0?'green':s.reward<0?'red':'';
+    detail.innerHTML = `
+      <div class="step-detail-header">
+        <span class="chip ${typeClass}">${typeLabel}</span>
+        <span class="step-detail-title">Step ${s.step} of ${currentSteps.length}</span>
+        <span class="reward-tag ${rewardClass}">${rewardStr} pts</span>
+      </div>
+      <div class="step-reasoning">${s.reasoning}</div>
+      <pre class="step-action">${JSON.stringify(s.action, null, 2)}</pre>
+      ${s.terminated?'<div class="step-terminated">Episode terminated</div>':''}
+    `;
+    renderTimeline();
+  }
+
+  function prevStep() { if (currentStepIdx > 0) showStep(currentStepIdx - 1); }
+  function nextStep() { if (currentStepIdx < currentSteps.length - 1) showStep(currentStepIdx + 1); }
+  function loadDemoResults() { renderResults(DEMO_DATA); }
+
+  // Auto-load results JSON from repo if it exists
+  fetch('/static/results.json')
+    .then(r => r.ok ? r.json() : null)
+    .then(data => { if (data) renderResults(data); })
+    .catch(() => {});
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'ArrowLeft') prevStep();
+    if (e.key === 'ArrowRight') nextStep();
+  });
+  </script>
+</body>
 </html>
