@@ -325,7 +325,6 @@ async def sandbox(websocket: WebSocket) -> None:
                                 preview.place_back,
                                 PlaceRequest(
                                     position=command.get("position"),
-                                    rotation_degrees=command.get("rotation_degrees"),
                                 ),
                                 emit,
                             )
