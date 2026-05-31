@@ -3,11 +3,12 @@
   "adapter": "adapter.py",
   "name": "JengaBench",
   "description": "A deterministic visual benchmark for spatial reasoning and physical planning in an unstable Jenga tower.",
+  "tags": ["tier1"],
 
   "binding_vow": {
     "version": "1.0.0",
     "tier": "tier1",
-    "description": "Inspect rendered JengaBench camera views and return one structured ChangeViewpoint or Push action per turn.",
+    "description": "Inspect rendered JengaBench camera views and return one structured ChangeViewpoint, Push, or PlaceBack action per turn.",
 
     "observation_space": {
       "type": "image",
@@ -17,14 +18,14 @@
 
     "action_space": {
       "type": "json",
-      "schema_ref": "#/schemas/jenga-action",
-      "description": "JSON action: ChangeViewpoint with azimuth, pitch, distance_cm; or Push with layer, positional color, axial face, 3x3 contact, and Gentle/Firm/Hard intensity."
+      "schema_ref": "{\"oneOf\":[{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"ChangeViewpoint\"},\"azimuth\":{\"type\":\"number\",\"minimum\":0,\"maximum\":360},\"pitch\":{\"type\":\"number\",\"minimum\":-90,\"maximum\":90},\"distance_cm\":{\"type\":\"number\",\"minimum\":20,\"maximum\":120}},\"required\":[\"type\",\"azimuth\",\"pitch\",\"distance_cm\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"Push\"},\"layer\":{\"type\":\"integer\",\"minimum\":1},\"color\":{\"type\":\"string\",\"enum\":[\"Red\",\"Lime\",\"Blue\",\"Wintergreen\",\"Purple\",\"Brown\"]},\"face\":{\"type\":\"string\",\"enum\":[\"North\",\"South\",\"East\",\"West\"]},\"contact\":{\"type\":\"string\",\"enum\":[\"top-left\",\"top-center\",\"top-right\",\"center-left\",\"center\",\"center-right\",\"bottom-left\",\"bottom-center\",\"bottom-right\"]},\"intensity\":{\"type\":\"string\",\"enum\":[\"Gentle\",\"Firm\",\"Hard\"]}},\"required\":[\"type\",\"layer\",\"color\",\"face\",\"contact\",\"intensity\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"PlaceBack\"},\"position\":{\"type\":\"string\",\"enum\":[\"Left\",\"Middle\",\"Right\"]},\"rotation_degrees\":{\"type\":\"number\",\"minimum\":-5,\"maximum\":5}},\"required\":[\"type\",\"position\",\"rotation_degrees\"],\"additionalProperties\":false}]}",
+      "description": "JSON action: ChangeViewpoint with azimuth, pitch, and distance_cm; Push with layer, positional color, axial face, 3x3 contact, and Gentle/Firm/Hard intensity; or PlaceBack with an available Left/Middle/Right slot and a -5 to +5 degree rotation."
     },
 
     "reward": {
       "type": "scalar",
       "range": { "low": -10.0, "high": 1.0 },
-      "description": "Valid camera changes and pushes score 0 in this slice, invalid actions score -0.5, and ten consecutive viewpoints terminate with -10."
+      "description": "Successful extractions score +1, valid camera changes and placements score 0, invalid actions score -0.5, collapse terminates the episode, and ten consecutive viewpoints terminate with -10."
     },
 
     "episode": {

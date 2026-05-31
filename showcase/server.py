@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import asyncio
+import logging
 import math
 import time
 from pathlib import Path
@@ -17,11 +18,17 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from jenga.render import CameraPose, render_png
-from jenga.sim import JengaSimulation, PushRequest, PushValidationError
+from jenga.sim import (
+    JengaSimulation,
+    PlaceRequest,
+    PlaceValidationError,
+    PushRequest,
+    PushValidationError,
+)
 from jenga.tower import BASE_CENTER_Z, BASE_SIZE, Orientation
 
 DEFAULT_CAMERA = CameraPose(azimuth=225.0, pitch=15.0, distance_cm=45.0)
-MIN_INSPECTOR_PITCH = 0.0
+MIN_INSPECTOR_PITCH = -45.0
 MAX_INSPECTOR_PITCH = 75.0
 STATIC_DIR = Path(__file__).with_name("static")
 
@@ -41,6 +48,7 @@ class PreviewState:
         self._camera = DEFAULT_CAMERA
         self._push_lock = Lock()
         self._seed = 0
+        self._terminated = False
 
     @property
     def camera(self) -> CameraPose:
@@ -79,6 +87,8 @@ class PreviewState:
                 for internal_id, position, rotation in self._simulation.transforms()
             }
             for block in self._simulation.blocks:
+                if block.body_id in self._simulation.retired_body_ids:
+                    continue
                 position, rotation = transforms[block.spec.internal_id]
                 length, width, height = block.spec.dimensions
                 size = (
@@ -105,6 +115,10 @@ class PreviewState:
                     "color": (8, 8, 9),
                 },
                 "blocks": blocks,
+                "phase": self._simulation.phase,
+                "available_placement_positions": self._simulation.available_placement_positions,
+                "top_layer": self._simulation.top_layer,
+                "max_push_layer": self._simulation.max_push_layer,
             }
 
     def push(
@@ -116,13 +130,40 @@ class PreviewState:
             raise RuntimeError("busy")
         try:
             with self._lock:
+                if self._terminated:
+                    raise RuntimeError("tower collapsed; reset is required")
                 self._ensure_simulation()
                 assert self._simulation is not None
-                return self._simulation.push(
+                frames = self._simulation.push(
                     request,
                     frame_callback=frame_callback,
                     continue_after_collapse=True,
                 ).frames
+                self._terminated = frames[-1]["phase"] == "collapse"
+                return frames
+        finally:
+            self._push_lock.release()
+
+    def place_back(
+        self,
+        request: PlaceRequest,
+        frame_callback: Callable[[dict[str, object]], None] | None = None,
+    ) -> tuple[dict[str, object], ...]:
+        if not self._push_lock.acquire(blocking=False):
+            raise RuntimeError("busy")
+        try:
+            with self._lock:
+                if self._terminated:
+                    raise RuntimeError("tower collapsed; reset is required")
+                self._ensure_simulation()
+                assert self._simulation is not None
+                frames = self._simulation.place_back(
+                    request,
+                    frame_callback=frame_callback,
+                    continue_after_collapse=True,
+                ).frames
+                self._terminated = frames[-1]["phase"] == "collapse"
+                return frames
         finally:
             self._push_lock.release()
 
@@ -143,6 +184,7 @@ class PreviewState:
         self._simulation = JengaSimulation()
         self._simulation.reset(seed=seed)
         self._camera = DEFAULT_CAMERA
+        self._terminated = False
 
     def _render_locked(self) -> bytes:
         assert self._simulation is not None
@@ -193,7 +235,7 @@ def _validated_camera(request: CameraRequest) -> CameraPose:
     if not 0.0 <= request.azimuth <= 360.0:
         raise HTTPException(status_code=422, detail="azimuth must be between 0 and 360")
     if not MIN_INSPECTOR_PITCH <= request.pitch <= MAX_INSPECTOR_PITCH:
-        raise HTTPException(status_code=422, detail="pitch must be between 0 and 75")
+        raise HTTPException(status_code=422, detail="pitch must be between -45 and 75")
     if not 20.0 <= request.distance_cm <= 120.0:
         raise HTTPException(status_code=422, detail="distance_cm must be between 20 and 120")
     return CameraPose(
@@ -248,8 +290,8 @@ async def sandbox(websocket: WebSocket) -> None:
                 scene = await asyncio.to_thread(preview.reset_scene, int(command.get("seed", 0)))
                 await websocket.send_json({"type": "scene", "scene": scene})
                 continue
-            if command.get("type") != "Push":
-                await websocket.send_json({"type": "error", "message": "type must be Reset or Push"})
+            if command.get("type") not in ("Push", "PlaceBack"):
+                await websocket.send_json({"type": "error", "message": "type must be Reset, Push, or PlaceBack"})
                 continue
             if not motion_lock.acquire(blocking=False):
                 await websocket.send_json({"type": "error", "message": "busy"})
@@ -263,28 +305,40 @@ async def sandbox(websocket: WebSocket) -> None:
                         loop.call_soon_threadsafe(queue.put_nowait, frame_payload)
                         time.sleep(0.001)
 
-                    push_task = asyncio.create_task(
-                        asyncio.to_thread(
-                            preview.push,
-                            PushRequest(
-                                layer=command.get("layer"),
-                                color=command.get("color"),
-                                face=command.get("face"),
-                                contact=command.get("contact"),
-                                intensity=command.get("intensity"),
-                            ),
-                            emit,
+                    if command.get("type") == "Push":
+                        motion_task = asyncio.create_task(
+                            asyncio.to_thread(
+                                preview.push,
+                                PushRequest(
+                                    layer=command.get("layer"),
+                                    color=command.get("color"),
+                                    face=command.get("face"),
+                                    contact=command.get("contact"),
+                                    intensity=command.get("intensity"),
+                                ),
+                                emit,
+                            )
                         )
-                    )
-                    while not push_task.done() or not queue.empty():
+                    else:
+                        motion_task = asyncio.create_task(
+                            asyncio.to_thread(
+                                preview.place_back,
+                                PlaceRequest(
+                                    position=command.get("position"),
+                                    rotation_degrees=command.get("rotation_degrees"),
+                                ),
+                                emit,
+                            )
+                        )
+                    while not motion_task.done() or not queue.empty():
                         try:
                             frame_payload = await asyncio.wait_for(queue.get(), timeout=0.05)
                         except asyncio.TimeoutError:
                             continue
                         await websocket.send_json(frame_payload)
                         await asyncio.sleep(1.0 / 30.0)
-                    frames = await push_task
-                except (PushValidationError, RuntimeError) as exc:
+                    frames = await motion_task
+                except (PlaceValidationError, PushValidationError, RuntimeError) as exc:
                     await websocket.send_json({"type": "error", "message": str(exc)})
                     continue
                 await websocket.send_json(
@@ -292,6 +346,7 @@ async def sandbox(websocket: WebSocket) -> None:
                         "type": "result",
                         "outcome": frames[-1]["phase"],
                         "frame_count": len(frames),
+                        "scene": preview.scene(),
                     }
                 )
             finally:
@@ -301,4 +356,10 @@ async def sandbox(websocket: WebSocket) -> None:
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
+    args = parser.parse_args()
+    logging.basicConfig(level=getattr(logging, args.log_level.upper()), format="%(name)s %(message)s")
+    uvicorn.run(app, host="0.0.0.0", port=8080, log_level=args.log_level)

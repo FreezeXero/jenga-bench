@@ -98,10 +98,16 @@ Update camera state. No physics step.
 
 ### PlaceBack
 1. Determine next top layer orientation (alternation rule)
-2. Position block at chosen slot (Left/Middle/Right)
-3. Drop from 0.5 cm above top
-4. Run settle loop
-5. Check collapse
+2. Center a new row over the current highest occupied row and keep that anchor until all three slots fill
+3. Map Left/Middle/Right to the orientation-specific positional slots and apply a validated -5 to +5 degree yaw offset
+4. Recolor the block for its new orientation and slot while preserving its internal ID
+5. Drop from 0.5 cm above top
+6. Run settle loop
+7. Check collapse
+
+Placed rows extend the logical tower height. Push validation accepts layers from
+1 through one below the current logical top layer so recycled blocks remain
+targetable after another row is started without allowing removal from the top.
 
 ## Settling (sim.py)
 

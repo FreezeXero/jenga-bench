@@ -111,7 +111,22 @@ class ManifestTests(unittest.TestCase):
 
     def test_manifest_is_json(self) -> None:
         manifest = json.loads((ROOT / "benchanything.json").read_text(encoding="utf-8"))
+        self.assertEqual(manifest["tags"], ["tier1"])
         self.assertEqual(manifest["binding_vow"]["action_space"]["type"], "json")
+        action_space = manifest["binding_vow"]["action_space"]
+        self.assertIn("PlaceBack", action_space["description"])
+
+        schema = json.loads(action_space["schema_ref"])
+        variants = {variant["properties"]["type"]["const"]: variant for variant in schema["oneOf"]}
+        self.assertEqual(set(variants), {"ChangeViewpoint", "Push", "PlaceBack"})
+        self.assertEqual(variants["ChangeViewpoint"]["properties"]["azimuth"]["maximum"], 360)
+        self.assertEqual(variants["ChangeViewpoint"]["properties"]["pitch"]["minimum"], -90)
+        self.assertEqual(variants["ChangeViewpoint"]["properties"]["distance_cm"]["minimum"], 20)
+        self.assertEqual(variants["Push"]["properties"]["layer"]["minimum"], 1)
+        self.assertEqual(variants["Push"]["properties"]["intensity"]["enum"], ["Gentle", "Firm", "Hard"])
+        self.assertEqual(variants["PlaceBack"]["properties"]["rotation_degrees"]["minimum"], -5)
+        self.assertEqual(variants["PlaceBack"]["properties"]["rotation_degrees"]["maximum"], 5)
+        self.assertTrue(all(variant["additionalProperties"] is False for variant in variants.values()))
 
 
 class PinnedSdkCapabilityTests(unittest.TestCase):

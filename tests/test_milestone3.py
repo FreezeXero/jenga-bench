@@ -16,6 +16,8 @@ if PHYSICS_AVAILABLE:
         INTENSITIES,
         RAMP_STEPS,
         JengaSimulation,
+        PlaceRequest,
+        PlaceValidationError,
         PushRequest,
         PushValidationError,
     )
@@ -85,10 +87,21 @@ class DynamicTowerTests(unittest.TestCase):
         finally:
             sim.close()
 
+    def test_top_layer_cannot_be_pushed(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            self.assertEqual(sim.max_push_layer, 17)
+            sim._validate_push(PushRequest(17, "Lime", "North", "center", "Gentle"))
+            with self.assertRaises(PushValidationError):
+                sim.push(PushRequest(18, "Purple", "East", "center", "Gentle"))
+        finally:
+            sim.close()
+
     def test_force_levels_are_locked(self) -> None:
         self.assertEqual(INTENSITIES, {"Gentle": 1.5, "Firm": 3, "Hard": 5})
 
-    def test_successful_extraction_wins_before_collapse_timeout(self) -> None:
+    def test_successful_extraction_requires_remaining_tower_to_settle(self) -> None:
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
@@ -100,15 +113,45 @@ class DynamicTowerTests(unittest.TestCase):
         finally:
             sim.close()
 
-    def test_extracted_block_does_not_collapse_the_next_push(self) -> None:
+    def test_extracted_block_requires_place_back_before_next_push(self) -> None:
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
             extracted = sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
             self.assertEqual(extracted.outcome, "extracted")
             self.assertEqual(len(sim.retired_body_ids), 1)
-            result = sim.push(PushRequest(8, "Purple", "East", "center", "Gentle"))
-            self.assertEqual(result.outcome, "settled")
+            with self.assertRaises(PushValidationError):
+                sim.push(PushRequest(8, "Purple", "East", "center", "Gentle"))
+        finally:
+            sim.close()
+
+    def test_place_back_recolors_block_and_clears_held_state(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            extracted = sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
+            self.assertEqual(extracted.outcome, "extracted")
+            internal_id = extracted.target_id
+            result = sim.place_back(PlaceRequest("Middle", 5))
+            self.assertEqual(result.outcome, "placed")
+            placed = next(block for block in sim.blocks if block.spec.internal_id == internal_id)
+            self.assertEqual(placed.spec.layer, 19)
+            self.assertEqual(placed.spec.color_name, "Lime")
+            self.assertEqual(placed.spec.yaw_degrees, 5)
+            self.assertIsNone(sim.held_block)
+            self.assertIn("place-drop", [frame["phase"] for frame in result.frames])
+            self.assertIn("color", result.frames[-1]["blocks"][0])
+        finally:
+            sim.close()
+
+    def test_place_back_rejects_rotation_outside_alignment_lock(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            sim.push(PushRequest(10, "Purple", "East", "center", "Hard"))
+            with self.assertRaises(PlaceValidationError):
+                sim.place_back(PlaceRequest("Left", 5.01))
+            self.assertIsNotNone(sim.held_block)
         finally:
             sim.close()
 
@@ -182,6 +225,60 @@ class DynamicTowerTests(unittest.TestCase):
         finally:
             sim.close()
 
+    def test_transient_tilt_is_not_an_immediate_collapse(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            block = sim.blocks[0]
+            position, _ = bullet.getBasePositionAndOrientation(
+                block.body_id, physicsClientId=sim.client_id
+            )
+            tilted = bullet.getQuaternionFromEuler((0.0, 0.5, 0.0))
+            bullet.resetBasePositionAndOrientation(
+                block.body_id,
+                position,
+                tilted,
+                physicsClientId=sim.client_id,
+            )
+
+            self.assertTrue(sim._has_obvious_collapse(target_id=-1))
+            self.assertFalse(sim._has_obvious_collapse(target_id=-1, include_tilt=False))
+        finally:
+            sim.close()
+
+    def test_collapse_takes_precedence_over_extraction(self) -> None:
+        sim = JengaSimulation()
+        try:
+            sim.reset(seed=0)
+            target = sim._validate_push(REQUEST)
+            initial, rotation = bullet.getBasePositionAndOrientation(
+                target.body_id, physicsClientId=sim.client_id
+            )
+            bullet.resetBasePositionAndOrientation(
+                target.body_id,
+                (initial[0] - 0.08, initial[1], initial[2]),
+                rotation,
+                physicsClientId=sim.client_id,
+            )
+            other = next(block for block in sim.blocks if block.body_id != target.body_id)
+            position, rotation = bullet.getBasePositionAndOrientation(
+                other.body_id, physicsClientId=sim.client_id
+            )
+            bullet.resetBasePositionAndOrientation(
+                other.body_id,
+                (position[0], position[1], -0.01),
+                rotation,
+                physicsClientId=sim.client_id,
+            )
+
+            result = sim.push(REQUEST)
+
+            self.assertEqual(result.outcome, "collapse")
+            self.assertIsNone(sim.held_block)
+            self.assertEqual(sim.available_placement_positions, ())
+        finally:
+            sim.close()
+
 
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
 class ModelPushTests(unittest.TestCase):
@@ -227,7 +324,7 @@ class ModelPushTests(unittest.TestCase):
         finally:
             env.close()
 
-    def test_model_extraction_terminates_as_slice_success(self) -> None:
+    def test_model_extraction_requires_place_back_and_scores_point(self) -> None:
         env = JengaBenchEnv()
         try:
             env.reset(seed=0)
@@ -241,10 +338,16 @@ class ModelPushTests(unittest.TestCase):
                     "intensity": "Hard",
                 }
             )
-            self.assertTrue(result.terminated)
-            self.assertEqual(result.reward, 0.0)
+            self.assertFalse(result.terminated)
+            self.assertEqual(result.reward, 1.0)
             self.assertEqual(result.info["outcome"], "extracted")
-            self.assertEqual(result.info["termination_reason"], "extracted")
+            self.assertEqual(result.info["phase"], "place_back")
+            self.assertEqual(result.info["blocks_removed"], "1")
+            self.assertIn("Available placement positions: Left, Middle, Right", result.system_prompt)
+            placed = env.step({"type": "PlaceBack", "position": "Middle", "rotation_degrees": 0})
+            self.assertFalse(placed.terminated)
+            self.assertEqual(placed.info["outcome"], "placed")
+            self.assertEqual(placed.info["phase"], "push")
         finally:
             env.close()
 
@@ -284,6 +387,29 @@ class SandboxWebSocketTests(unittest.TestCase):
                 self.assertEqual(websocket.receive_json(), {"type": "error", "message": "busy"})
         finally:
             motion_lock.release()
+
+    def test_preview_requires_reset_after_collapse(self) -> None:
+        preview.reset_scene(seed=0)
+        assert preview._simulation is not None
+        target = preview._simulation._validate_push(REQUEST)
+        other = next(block for block in preview._simulation.blocks if block.body_id != target.body_id)
+        position, rotation = bullet.getBasePositionAndOrientation(
+            other.body_id, physicsClientId=preview._simulation.client_id
+        )
+        bullet.resetBasePositionAndOrientation(
+            other.body_id,
+            (position[0], position[1], -0.01),
+            rotation,
+            physicsClientId=preview._simulation.client_id,
+        )
+
+        frames = preview.push(REQUEST)
+
+        self.assertEqual(frames[-1]["phase"], "collapse")
+        with self.assertRaisesRegex(RuntimeError, "reset is required"):
+            preview.push(REQUEST)
+        preview.reset_scene(seed=0)
+        self.assertEqual(preview.push(REQUEST)[-1]["phase"], "settled")
 
 
 if __name__ == "__main__":

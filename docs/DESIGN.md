@@ -143,7 +143,7 @@ Sets a new camera state. Tower state unchanged. Reward = 0.
 
 | Field     | Description                                                                                              |
 |-----------|----------------------------------------------------------------------------------------------------------|
-| layer     | 1–18 (bottom to top), identifies the target layer                                                        |
+| layer     | 1 through one below the current logical top layer (bottom to top), identifies the target layer. The top layer cannot be pushed. |
 | color     | identifies the target block within the layer (color = slot)                                              |
 | face      | cardinal direction of the face to push from. North-South blocks: North or South. East-West blocks: East or West. Push from North = force applied southward through the block. |
 | contact   | where on the face to apply force. Discrete 3x3 grid: top-left, top-center, top-right, center-left, center, center-right, bottom-left, bottom-center, bottom-right. Off-center contact generates torque. |
@@ -162,10 +162,13 @@ toward the consecutive-viewpoint timeout.
 | Field    | Description                                                                                    |
 |----------|------------------------------------------------------------------------------------------------|
 | position | Left, Middle, or Right slot on the next top layer. Observation tells the agent which slots are available. Picking an occupied slot is an invalid action. |
+| rotation_degrees | Yaw offset from the required layer orientation, from -5 to +5 degrees. Values outside this range are invalid. |
 
 | Rule     | Description                                                                                    |
 |----------|------------------------------------------------------------------------------------------------|
 | Orientation | follows layer alternation (next layer rotates 90° from current top)                         |
+| Slot mapping | Left/Middle/Right maps to East/Middle/West for North-South rows and South/Middle/North for East-West rows |
+| Row anchor | a new top row is centered over the average x/y center of the current highest occupied row; that center is reused until all three slots fill |
 | Drop     | block is released 0.5 cm above the top of the tower, then settles                             |
 
 ### Env Response

@@ -10,6 +10,13 @@ let drag = null;
 let vertexCount = 0;
 let animation = null;
 let socket = null;
+let sandboxBusy = false;
+let frameQueue = [];
+let framePlaying = false;
+let pendingResult = null;
+let sandboxTerminated = false;
+const VISUAL_POSITION_EPSILON = .0005;
+const VISUAL_ROTATION_EPSILON = .002;
 const colorOptions = {
   odd: ["Red", "Lime", "Blue"],
   even: ["Wintergreen", "Purple", "Brown"],
@@ -217,23 +224,47 @@ function renderScene() {
   gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
 }
 
-function applyScene(nextScene) {
+function applyScene(nextScene, { preserveCamera = false } = {}) {
   scene = nextScene;
   document.querySelector("#tower-seed").value = String(nextScene.seed ?? 0);
-  Object.assign(camera, nextScene.camera);
+  if (!preserveCamera) Object.assign(camera, nextScene.camera);
+  document.querySelector("#push-layer").max = String(nextScene.max_push_layer ?? 17);
+  document.querySelector("#place-position").replaceChildren(
+    ...(nextScene.available_placement_positions || []).map((value) => new Option(value)),
+  );
   loadGeometry();
   updateMetadata();
   renderScene();
+  updateActionControls();
   setStatus("Local preview", true);
 }
 
 function setBusy(busy) {
-  for (const id of ["push", "reset-tower"]) document.querySelector(`#${id}`).disabled = busy;
+  sandboxBusy = busy;
+  updateActionControls();
 }
 
-function applyFrame(frame) {
-  if (!scene) return;
+function updateActionControls() {
+  const placementRequired = scene?.phase === "place_back";
+  document.querySelector("#push").disabled = sandboxBusy || sandboxTerminated || placementRequired;
+  document.querySelector("#place-back").disabled = sandboxBusy || sandboxTerminated || !placementRequired;
+  document.querySelector("#reset-tower").disabled = sandboxBusy;
+}
+
+function applyFrame(frame, onComplete) {
+  if (!scene) {
+    onComplete();
+    return;
+  }
   const targets = new Map(frame.blocks.map((block) => [block.id, block]));
+  const existing = new Map(scene.blocks.map((block) => [block.id, block]));
+  scene.blocks = frame.blocks.map((target) => existing.get(target.id) || {
+    id: target.id,
+    position: [...target.position],
+    rotation: [...target.rotation],
+    size: target.size,
+    color: target.color,
+  });
   const starts = new Map(scene.blocks.map((block) => [
     block.id,
     { position: [...block.position], rotation: [...(block.rotation || [0, 0, 0, 1])] },
@@ -247,15 +278,57 @@ function applyFrame(frame) {
       const to = targets.get(block.id);
       block.position = from.position.map((value, index) => value + amount * (to.position[index] - value));
       block.rotation = slerp(from.rotation, to.rotation, amount);
+      if (to.color) block.color = to.color;
     }
     loadGeometry();
     renderScene();
-    if (amount < 1) animation = requestAnimationFrame(tick);
+    if (amount < 1) {
+      animation = requestAnimationFrame(tick);
+    } else {
+      animation = null;
+      onComplete();
+    }
   }
   animation = requestAnimationFrame(tick);
   document.querySelector("#phase").textContent = frame.phase;
   document.querySelector("#sim-time").textContent = Number(frame.sim_time).toFixed(2);
   document.querySelector("#frame-count").textContent = String(frame.sequence + 1);
+}
+
+function applyResult(message) {
+  if (message.scene) applyScene(message.scene, { preserveCamera: true });
+  sandboxTerminated = message.outcome === "collapse";
+  setBusy(false);
+  document.querySelector("#outcome").textContent = message.outcome;
+  document.querySelector("#frame-count").textContent = String(message.frame_count);
+}
+
+function framesVisuallyMatch(first, second) {
+  if (!first || first.blocks.length !== second.blocks.length) return false;
+  const previous = new Map(first.blocks.map((block) => [block.id, block]));
+  return second.blocks.every((block) => {
+    const before = previous.get(block.id);
+    if (!before) return false;
+    return block.position.every((value, index) => Math.abs(value - before.position[index]) < VISUAL_POSITION_EPSILON)
+      && block.rotation.every((value, index) => Math.abs(value - before.rotation[index]) < VISUAL_ROTATION_EPSILON);
+  });
+}
+
+function playQueuedFrames() {
+  if (framePlaying) return;
+  const frame = frameQueue.shift();
+  if (!frame) {
+    if (pendingResult) {
+      applyResult(pendingResult);
+      pendingResult = null;
+    }
+    return;
+  }
+  framePlaying = true;
+  applyFrame(frame, () => {
+    framePlaying = false;
+    playQueuedFrames();
+  });
 }
 
 function connectSandbox() {
@@ -265,15 +338,19 @@ function connectSandbox() {
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     console.log("[ws]", message.type, message);
-    if (message.type === "frame") applyFrame(message);
+    if (message.type === "frame") {
+      const previous = frameQueue[frameQueue.length - 1];
+      if (message.phase === "collapse-settle" && framesVisuallyMatch(previous, message)) {
+        frameQueue[frameQueue.length - 1] = message;
+      } else {
+        frameQueue.push(message);
+      }
+      playQueuedFrames();
+    }
     if (message.type === "scene") applyScene(message.scene);
     if (message.type === "result") {
-      setBusy(false);
-      document.querySelector("#outcome").textContent = message.outcome;
-      document.querySelector("#frame-count").textContent = String(message.frame_count);
-      if (message.outcome === "collapse") {
-        document.querySelector("#push").disabled = true;
-      }
+      pendingResult = message;
+      playQueuedFrames();
     }
     if (message.type === "error") {
       setBusy(false);
@@ -304,7 +381,7 @@ viewport.addEventListener("pointermove", (event) => {
   const deltaX = event.clientX - drag.x;
   const deltaY = event.clientY - drag.y;
   camera.azimuth = (camera.azimuth - deltaX * .55 + 360) % 360;
-  camera.pitch = clamp(camera.pitch + deltaY * .4, 0, 75);
+  camera.pitch = clamp(camera.pitch + deltaY * .4, -45, 75);
   drag = { x: event.clientX, y: event.clientY };
   updateMetadata();
   renderScene();
@@ -342,7 +419,23 @@ document.querySelector("#push").addEventListener("click", () => {
     intensity: document.querySelector("#push-intensity").value,
   }));
 });
+document.querySelector("#place-back").addEventListener("click", () => {
+  document.querySelector("#sandbox-error").textContent = "";
+  document.querySelector("#outcome").textContent = "-";
+  setBusy(true);
+  socket.send(JSON.stringify({
+    type: "PlaceBack",
+    position: document.querySelector("#place-position").value,
+    rotation_degrees: Number(document.querySelector("#place-rotation").value),
+  }));
+});
 document.querySelector("#reset-tower").addEventListener("click", () => {
+  frameQueue = [];
+  pendingResult = null;
+  if (animation) cancelAnimationFrame(animation);
+  animation = null;
+  framePlaying = false;
+  sandboxTerminated = false;
   setBusy(true);
   socket.send(JSON.stringify({
     type: "Reset",

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+import logging
 import math
 from typing import Any, Callable
 
@@ -16,17 +17,24 @@ from jenga.tower import (
     BLOCK_MASS,
     FLOOR_CENTER_Z,
     FLOOR_SIZE,
+    EAST_WEST_SLOTS,
+    NORTH_SOUTH_SLOTS,
     BlockSpec,
     Orientation,
     build_prebuilt_tower,
 )
 from jenga.settings import DEFAULT_SETTINGS
 
+logger = logging.getLogger(__name__)
+
 PHYSICS = DEFAULT_SETTINGS.physics
 TIMESTEP = PHYSICS.timestep
 SOLVER_ITERATIONS = PHYSICS.solver_iterations
 SETTLE_TIMEOUT_SECONDS = PHYSICS.settle_timeout_seconds
 VIEWER_COLLAPSE_TAIL_TIMEOUT_SECONDS = PHYSICS.viewer_collapse_tail_timeout_seconds
+VIEWER_COLLAPSE_LINEAR_VELOCITY_THRESHOLD = PHYSICS.viewer_collapse_linear_velocity_threshold
+VIEWER_COLLAPSE_ANGULAR_VELOCITY_THRESHOLD = PHYSICS.viewer_collapse_angular_velocity_threshold
+VIEWER_COLLAPSE_STABLE_STEPS = PHYSICS.viewer_collapse_stable_steps
 SETTLE_STABLE_STEPS = PHYSICS.settle_stable_steps
 LINEAR_VELOCITY_THRESHOLD = PHYSICS.linear_velocity_threshold
 ANGULAR_VELOCITY_THRESHOLD = PHYSICS.angular_velocity_threshold
@@ -36,6 +44,8 @@ LATERAL_FRICTION = PHYSICS.lateral_friction
 FRAME_SAMPLE_STEPS = PHYSICS.frame_sample_steps
 MAX_TILT_DEGREES = PHYSICS.max_tilt_degrees
 BASE_HALF_WIDTH = BASE_SIZE[0] / 2
+PLACEMENT_DROP_HEIGHT = PHYSICS.placement_drop_height
+MAX_PLACEMENT_ROTATION_DEGREES = PHYSICS.max_placement_rotation_degrees
 
 CONTACTS = (
     "top-left",
@@ -64,7 +74,11 @@ class PushValidationError(ValueError):
     """Raised when a push request is invalid."""
 
 
-@dataclass(frozen=True)
+class PlaceValidationError(ValueError):
+    """Raised when a placement request is invalid."""
+
+
+@dataclass
 class BlockBody:
     spec: BlockSpec
     body_id: int
@@ -88,6 +102,20 @@ class PushResult:
     settle_steps: int
 
 
+@dataclass(frozen=True)
+class PlaceRequest:
+    position: str
+    rotation_degrees: float
+
+
+@dataclass(frozen=True)
+class PlaceResult:
+    outcome: str
+    frames: tuple[dict[str, Any], ...]
+    target_id: str
+    settle_steps: int
+
+
 class JengaSimulation:
     """Owns one PyBullet DIRECT client and its dynamic tower."""
 
@@ -99,7 +127,39 @@ class JengaSimulation:
         self.settle_steps: int | None = None
         self.last_frames: tuple[dict[str, Any], ...] = ()
         self.retired_body_ids: set[int] = set()
+        self.held_block: BlockBody | None = None
+        self.placement_layer: int | None = None
+        self.placement_anchor: tuple[float, float] | None = None
+        self.placement_surface_z: float | None = None
         self._configure()
+
+    @property
+    def phase(self) -> str:
+        return "place_back" if self.held_block is not None else "push"
+
+    @property
+    def top_layer(self) -> int:
+        return max(
+            block.spec.layer for block in self.blocks if block.body_id not in self.retired_body_ids
+        )
+
+    @property
+    def max_push_layer(self) -> int:
+        return self.top_layer - 1
+
+    @property
+    def available_placement_positions(self) -> tuple[str, ...]:
+        if self.held_block is None:
+            return ()
+        return self._available_positions_for_layer(self._next_placement_layer())
+
+    def _available_positions_for_layer(self, layer: int) -> tuple[str, ...]:
+        occupied = {
+            self._position_for_slot(block.spec.orientation, block.spec.slot)
+            for block in self.blocks
+            if block.body_id not in self.retired_body_ids and block.spec.layer == layer
+        }
+        return tuple(position for position in ("Left", "Middle", "Right") if position not in occupied)
 
     @property
     def is_connected(self) -> bool:
@@ -120,6 +180,8 @@ class JengaSimulation:
     def transforms(self) -> tuple[tuple[str, tuple[float, ...], tuple[float, ...]], ...]:
         values = []
         for block in self.blocks:
+            if block.body_id in self.retired_body_ids:
+                continue
             position, rotation = bullet.getBasePositionAndOrientation(
                 block.body_id, physicsClientId=self.client_id
             )
@@ -133,9 +195,22 @@ class JengaSimulation:
             "sim_time": round(sim_time, 6),
             "phase": phase,
             "blocks": [
-                {"id": internal_id, "position": position, "rotation": rotation}
-                for internal_id, position, rotation in self.transforms()
+                {
+                    "id": block.spec.internal_id,
+                    "position": position,
+                    "rotation": rotation,
+                    "color": block.spec.rgb,
+                    "size": self._block_size(block.spec),
+                }
+                for block in self.blocks
+                if block.body_id not in self.retired_body_ids
+                for position, rotation in (
+                    bullet.getBasePositionAndOrientation(
+                        block.body_id, physicsClientId=self.client_id
+                    ),
+                )
             ],
+            "available_placement_positions": self.available_placement_positions,
         }
 
     def push(
@@ -145,6 +220,8 @@ class JengaSimulation:
         *,
         continue_after_collapse: bool = False,
     ) -> PushResult:
+        if self.held_block is not None:
+            raise PushValidationError("PlaceBack is required before another Push")
         target = self._validate_push(request)
         initial_position, _ = bullet.getBasePositionAndOrientation(
             target.body_id, physicsClientId=self.client_id
@@ -160,7 +237,7 @@ class JengaSimulation:
         breakaway = load * LATERAL_FRICTION
         peak_force = breakaway * PUSH_FORCE_MULTIPLIER
         velocity_cap = VELOCITY_CAPS[request.intensity]
-        print(f"[push] load={load:.3f}N breakaway={breakaway:.3f}N peak={peak_force:.3f}N cap={velocity_cap}m/s")
+        logger.debug("push load=%.3fN breakaway=%.3fN peak=%.3fN cap=%.2fm/s", load, breakaway, peak_force, velocity_cap)
         extracted = False
         for ramp_step in range(1, RAMP_STEPS + 1):
             speed = sum(v ** 2 for v in bullet.getBaseVelocity(target.body_id, physicsClientId=self.client_id)[0]) ** 0.5
@@ -185,7 +262,7 @@ class JengaSimulation:
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="ramp"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target, initial_position, direction)
-            if self._has_obvious_collapse(target.body_id):
+            if self._has_obvious_collapse(target.body_id, include_tilt=False):
                 if continue_after_collapse:
                     sequence, simulated_steps = self._settle_collapse_tail(
                         frames, sequence, simulated_steps, frame_callback
@@ -229,13 +306,16 @@ class JengaSimulation:
         ramp_steps: int = RAMP_STEPS,
         frame_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> PushResult:
+        if outcome == "extracted":
+            self.retired_body_ids.add(target.body_id)
+            self.held_block = target
         self._zero_velocities()
         final_sequence = sequence + 1
         final = self.frame(sequence=final_sequence, sim_time=simulated_steps * TIMESTEP, phase=outcome)
         frames.append(final)
         self._emit_frame(final, frame_callback)
         if outcome == "extracted":
-            self.retired_body_ids.add(target.body_id)
+            bullet.removeBody(target.body_id, physicsClientId=self.client_id)
         self.last_frames = tuple(frames)
         return PushResult(
             outcome=outcome,
@@ -246,8 +326,15 @@ class JengaSimulation:
         )
 
     def _validate_push(self, request: PushRequest) -> BlockBody:
-        if isinstance(request.layer, bool) or not isinstance(request.layer, int) or not 1 <= request.layer <= 18:
-            raise PushValidationError("layer must be an integer between 1 and 18")
+        if (
+            isinstance(request.layer, bool)
+            or not isinstance(request.layer, int)
+            or not 1 <= request.layer <= self.max_push_layer
+        ):
+            raise PushValidationError(
+                f"layer must be an integer between 1 and {self.max_push_layer}; "
+                "the top layer cannot be pushed"
+            )
         target = next(
             (
                 block
@@ -268,6 +355,159 @@ class JengaSimulation:
         if request.intensity not in VELOCITY_CAPS:
             raise PushValidationError("intensity must be Gentle, Firm, or Hard")
         return target
+
+    def place_back(
+        self,
+        request: PlaceRequest,
+        frame_callback: Callable[[dict[str, Any]], None] | None = None,
+        *,
+        continue_after_collapse: bool = False,
+    ) -> PlaceResult:
+        target = self._validate_place(request)
+        layer = self._next_placement_layer()
+        orientation = self._orientation_for_layer(layer)
+        slots = NORTH_SOUTH_SLOTS if orientation == Orientation.NORTH_SOUTH else EAST_WEST_SLOTS
+        slot = slots[("Left", "Middle", "Right").index(request.position)]
+        anchor_x, anchor_y = self._placement_row_anchor()
+        top_z = self._placement_row_surface()
+        if orientation == Orientation.NORTH_SOUTH:
+            position = (anchor_x + slot.offset, anchor_y, top_z + BLOCK_HEIGHT / 2 + PLACEMENT_DROP_HEIGHT)
+            base_yaw = 0.0
+        else:
+            position = (anchor_x, anchor_y + slot.offset, top_z + BLOCK_HEIGHT / 2 + PLACEMENT_DROP_HEIGHT)
+            base_yaw = 0.0
+        spec = replace(
+            target.spec,
+            layer=layer,
+            orientation=orientation,
+            slot=slot.name,
+            color_name=slot.color_name,
+            rgb=slot.rgb,
+            position=position,
+            yaw_degrees=base_yaw + float(request.rotation_degrees),
+        )
+        frames = [self.frame(sequence=0, sim_time=0.0, phase="initial")]
+        self._emit_frame(frames[-1], frame_callback)
+        self.retired_body_ids.remove(target.body_id)
+        placed = self._create_block_body(spec)
+        self.blocks = tuple(placed if block is target else block for block in self.blocks)
+        self.held_block = None
+        sequence = 1
+        simulated_steps = 0
+        spawn = self.frame(sequence=sequence, sim_time=0.0, phase="place-drop")
+        frames.append(spawn)
+        self._emit_frame(spawn, frame_callback)
+        settled = False
+        stable_steps = 0
+        timeout_steps = round(SETTLE_TIMEOUT_SECONDS / TIMESTEP)
+        settle_steps = timeout_steps
+        for settle_step in range(1, timeout_steps + 1):
+            bullet.stepSimulation(physicsClientId=self.client_id)
+            simulated_steps += 1
+            if settle_step % FRAME_SAMPLE_STEPS == 0:
+                sequence += 1
+                frame = self.frame(
+                    sequence=sequence,
+                    sim_time=simulated_steps * TIMESTEP,
+                    phase="place-settle",
+                )
+                frames.append(frame)
+                self._emit_frame(frame, frame_callback)
+            if self._has_obvious_collapse(target_id=-1, include_tilt=False):
+                break
+            if self._all_blocks_below_velocity_thresholds():
+                stable_steps += 1
+                if stable_steps >= SETTLE_STABLE_STEPS:
+                    settled = True
+                    settle_steps = settle_step
+                    break
+            else:
+                stable_steps = 0
+        outcome = "placed" if settled else "collapse"
+        if outcome == "collapse" and continue_after_collapse:
+            sequence, simulated_steps = self._settle_collapse_tail(
+                frames, sequence, simulated_steps, frame_callback
+            )
+        if outcome == "placed" and not self._available_positions_for_layer(layer):
+            self.placement_layer = None
+            self.placement_anchor = None
+            self.placement_surface_z = None
+        self._zero_velocities()
+        final = self.frame(
+            sequence=sequence + 1,
+            sim_time=simulated_steps * TIMESTEP,
+            phase=outcome,
+        )
+        frames.append(final)
+        self._emit_frame(final, frame_callback)
+        self.last_frames = tuple(frames)
+        return PlaceResult(
+            outcome=outcome,
+            frames=self.last_frames,
+            target_id=placed.spec.internal_id,
+            settle_steps=settle_steps,
+        )
+
+    def _validate_place(self, request: PlaceRequest) -> BlockBody:
+        if self.held_block is None:
+            raise PlaceValidationError("PlaceBack requires an extracted block")
+        if request.position not in ("Left", "Middle", "Right"):
+            raise PlaceValidationError("position must be Left, Middle, or Right")
+        if request.position not in self.available_placement_positions:
+            raise PlaceValidationError("position is already occupied")
+        angle = request.rotation_degrees
+        if isinstance(angle, bool) or not isinstance(angle, (int, float)) or not math.isfinite(float(angle)):
+            raise PlaceValidationError("rotation_degrees must be finite and numeric")
+        if not -MAX_PLACEMENT_ROTATION_DEGREES <= float(angle) <= MAX_PLACEMENT_ROTATION_DEGREES:
+            raise PlaceValidationError("rotation_degrees must be between -5 and 5")
+        return self.held_block
+
+    def _next_placement_layer(self) -> int:
+        if self.placement_layer is None:
+            self.placement_layer = self.top_layer + 1
+        return self.placement_layer
+
+    def _placement_row_anchor(self) -> tuple[float, float]:
+        if self.placement_anchor is None:
+            top = self.top_layer
+            positions = [
+                bullet.getBasePositionAndOrientation(block.body_id, physicsClientId=self.client_id)[0]
+                for block in self.blocks
+                if block.body_id not in self.retired_body_ids and block.spec.layer == top
+            ]
+            self.placement_anchor = (
+                sum(position[0] for position in positions) / len(positions),
+                sum(position[1] for position in positions) / len(positions),
+            )
+        return self.placement_anchor
+
+    def _placement_row_surface(self) -> float:
+        if self.placement_surface_z is None:
+            self.placement_surface_z = max(
+                bullet.getBasePositionAndOrientation(block.body_id, physicsClientId=self.client_id)[0][2]
+                + BLOCK_HEIGHT / 2
+                for block in self.blocks
+                if block.body_id not in self.retired_body_ids
+            )
+        return self.placement_surface_z
+
+    @staticmethod
+    def _orientation_for_layer(layer: int) -> Orientation:
+        return Orientation.NORTH_SOUTH if layer % 2 else Orientation.EAST_WEST
+
+    @staticmethod
+    def _block_size(spec: BlockSpec) -> tuple[float, float, float]:
+        length, width, height = spec.dimensions
+        return (
+            (width, length, height)
+            if spec.orientation == Orientation.NORTH_SOUTH
+            else (length, width, height)
+        )
+
+    @staticmethod
+    def _position_for_slot(orientation: Orientation, slot: str) -> str:
+        names = NORTH_SOUTH_SLOTS if orientation == Orientation.NORTH_SOUTH else EAST_WEST_SLOTS
+        return ("Left", "Middle", "Right")[[value.name for value in names].index(slot)]
 
     def _world_contact_point(self, target: BlockBody, request: PushRequest) -> tuple[float, ...]:
         row, column = request.contact.split("-") if "-" in request.contact else ("center", "center")
@@ -308,7 +548,7 @@ class JengaSimulation:
         movement = sum((position[index] - initial_position[index]) * direction[index] for index in range(3))
         return movement >= BLOCK_LENGTH
 
-    def _has_obvious_collapse(self, target_id: int) -> bool:
+    def _has_obvious_collapse(self, target_id: int, *, include_tilt: bool = True) -> bool:
         for block in self.blocks:
             if block.body_id == target_id or block.body_id in self.retired_body_ids:
                 continue
@@ -320,7 +560,7 @@ class JengaSimulation:
                 return True
             if abs(position[0]) > BASE_HALF_WIDTH or abs(position[1]) > BASE_HALF_WIDTH:
                 return True
-            if math.degrees(max(abs(roll), abs(pitch))) > MAX_TILT_DEGREES:
+            if include_tilt and math.degrees(max(abs(roll), abs(pitch))) > MAX_TILT_DEGREES:
                 return True
         return False
 
@@ -345,7 +585,7 @@ class JengaSimulation:
                 frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="settle"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target, initial_position, direction)
-            if self._has_obvious_collapse(target.body_id):
+            if self._has_obvious_collapse(target.body_id, include_tilt=False):
                 return False, extracted, sequence, simulated_steps, settle_step
             if self._all_blocks_below_velocity_thresholds(ignored_body_id=target.body_id if extracted else None):
                 stable_steps += 1
@@ -377,9 +617,12 @@ class JengaSimulation:
                     )
                 )
                 self._emit_frame(frames[-1], frame_callback)
-            if self._all_blocks_below_velocity_thresholds():
+            if self._all_blocks_below_velocity_thresholds(
+                linear_threshold=VIEWER_COLLAPSE_LINEAR_VELOCITY_THRESHOLD,
+                angular_threshold=VIEWER_COLLAPSE_ANGULAR_VELOCITY_THRESHOLD,
+            ):
                 stable_steps += 1
-                if stable_steps >= SETTLE_STABLE_STEPS:
+                if stable_steps >= VIEWER_COLLAPSE_STABLE_STEPS:
                     break
             else:
                 stable_steps = 0
@@ -411,6 +654,10 @@ class JengaSimulation:
         self.settle_steps = None
         self.last_frames = ()
         self.retired_body_ids = set()
+        self.held_block = None
+        self.placement_layer = None
+        self.placement_anchor = None
+        self.placement_surface_z = None
 
     def _build_world(self, specs: tuple[BlockSpec, ...]) -> None:
         floor_half = tuple(value / 2 for value in FLOOR_SIZE)
@@ -455,38 +702,38 @@ class JengaSimulation:
         )
         bodies = []
         for spec in specs:
-            length, width, height = spec.dimensions
-            dimensions = (width, length, height) if spec.orientation == Orientation.NORTH_SOUTH else (length, width, height)
-            half_extents = tuple(value / 2 for value in dimensions)
-            collision = bullet.createCollisionShape(
-                bullet.GEOM_BOX, halfExtents=half_extents, physicsClientId=self.client_id
-            )
-            visual = bullet.createVisualShape(
-                bullet.GEOM_BOX, halfExtents=half_extents, rgbaColor=spec.rgba, physicsClientId=self.client_id
-            )
-            body_id = bullet.createMultiBody(
-                baseMass=BLOCK_MASS,
-                baseCollisionShapeIndex=collision,
-                baseVisualShapeIndex=visual,
-                basePosition=spec.position,
-                baseOrientation=bullet.getQuaternionFromEuler(
-                    (0.0, 0.0, math.radians(spec.yaw_degrees))
-                ),
-                physicsClientId=self.client_id,
-            )
-            bullet.changeDynamics(
-                body_id,
-                -1,
-                lateralFriction=PHYSICS.lateral_friction,
-                rollingFriction=PHYSICS.rolling_friction,
-                spinningFriction=PHYSICS.spinning_friction,
-                linearDamping=PHYSICS.linear_damping,
-                angularDamping=PHYSICS.angular_damping,
-                restitution=0.0,
-                physicsClientId=self.client_id,
-            )
-            bodies.append(BlockBody(spec=spec, body_id=body_id))
+            bodies.append(self._create_block_body(spec))
         self.blocks = tuple(bodies)
+
+    def _create_block_body(self, spec: BlockSpec) -> BlockBody:
+        dimensions = self._block_size(spec)
+        half_extents = tuple(value / 2 for value in dimensions)
+        collision = bullet.createCollisionShape(
+            bullet.GEOM_BOX, halfExtents=half_extents, physicsClientId=self.client_id
+        )
+        visual = bullet.createVisualShape(
+            bullet.GEOM_BOX, halfExtents=half_extents, rgbaColor=spec.rgba, physicsClientId=self.client_id
+        )
+        body_id = bullet.createMultiBody(
+            baseMass=BLOCK_MASS,
+            baseCollisionShapeIndex=collision,
+            baseVisualShapeIndex=visual,
+            basePosition=spec.position,
+            baseOrientation=bullet.getQuaternionFromEuler((0.0, 0.0, math.radians(spec.yaw_degrees))),
+            physicsClientId=self.client_id,
+        )
+        bullet.changeDynamics(
+            body_id,
+            -1,
+            lateralFriction=PHYSICS.lateral_friction,
+            rollingFriction=PHYSICS.rolling_friction,
+            spinningFriction=PHYSICS.spinning_friction,
+            linearDamping=PHYSICS.linear_damping,
+            angularDamping=PHYSICS.angular_damping,
+            restitution=0.0,
+            physicsClientId=self.client_id,
+        )
+        return BlockBody(spec=spec, body_id=body_id)
 
     def _settle(self) -> bool:
         stable_steps = 0
@@ -514,13 +761,19 @@ class JengaSimulation:
                 physicsClientId=self.client_id,
             )
 
-    def _all_blocks_below_velocity_thresholds(self, *, ignored_body_id: int | None = None) -> bool:
+    def _all_blocks_below_velocity_thresholds(
+        self,
+        *,
+        ignored_body_id: int | None = None,
+        linear_threshold: float = LINEAR_VELOCITY_THRESHOLD,
+        angular_threshold: float = ANGULAR_VELOCITY_THRESHOLD,
+    ) -> bool:
         for block in self.blocks:
             if block.body_id == ignored_body_id or block.body_id in self.retired_body_ids:
                 continue
             linear, angular = bullet.getBaseVelocity(block.body_id, physicsClientId=self.client_id)
-            if max(abs(value) for value in linear) >= LINEAR_VELOCITY_THRESHOLD:
+            if max(abs(value) for value in linear) >= linear_threshold:
                 return False
-            if max(abs(value) for value in angular) >= ANGULAR_VELOCITY_THRESHOLD:
+            if max(abs(value) for value in angular) >= angular_threshold:
                 return False
         return True

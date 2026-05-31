@@ -95,6 +95,14 @@ class InspectorRouteTests(unittest.TestCase):
         self.assertIn("new WebSocket", script.text)
         self.assertIn("function slerp", script.text)
         self.assertIn("Push block", index.text)
+        self.assertIn("Place block on top", index.text)
+        self.assertIn('type: "PlaceBack"', script.text)
+        self.assertIn("applyScene(message.scene, { preserveCamera: true })", script.text)
+        self.assertIn("function playQueuedFrames()", script.text)
+        self.assertIn("pendingResult = message", script.text)
+        self.assertIn("function framesVisuallyMatch", script.text)
+        self.assertIn("clamp(camera.pitch + deltaY * .4, -45, 75)", script.text)
+        self.assertIn('sandboxTerminated = message.outcome === "collapse"', script.text)
         self.assertEqual(script.headers["cache-control"], "no-store")
         self.assertEqual(styles.status_code, 200)
         self.assertEqual(health.json()["status"], "ok")
@@ -132,7 +140,7 @@ class InspectorRouteTests(unittest.TestCase):
     def test_invalid_camera_values_are_rejected(self) -> None:
         cases = [
             {"azimuth": -1, "pitch": 5, "distance_cm": 60},
-            {"azimuth": 90, "pitch": -1, "distance_cm": 60},
+            {"azimuth": 90, "pitch": -46, "distance_cm": 60},
             {"azimuth": 90, "pitch": 76, "distance_cm": 60},
             {"azimuth": 90, "pitch": 5, "distance_cm": 121},
         ]
@@ -141,6 +149,14 @@ class InspectorRouteTests(unittest.TestCase):
             with self.subTest(camera=camera):
                 response = self.client.post("/api/capture", json=camera)
                 self.assertEqual(response.status_code, 422)
+
+    def test_negative_pitch_is_allowed(self) -> None:
+        response = self.client.post(
+            "/api/capture",
+            json={"azimuth": 90, "pitch": -45, "distance_cm": 60},
+        )
+
+        self.assertEqual(response.status_code, 200)
 
 
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
