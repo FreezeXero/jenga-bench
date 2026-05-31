@@ -19,16 +19,21 @@ There are (x, y, z) where z represents vertical space, upwards being higher.
 
 Each block is 1.5 cm tall, 2.5 cm wide, 7.5 cm long. It has the weight of 120 grams.
 
-Each block has their own color. In the following table:
+Each visible block color indicates its current position in the tower. Color is
+not a permanent block identity. When an extracted block is placed on top, it is
+recolored for its new layer orientation and slot while its internal simulation
+ID remains unchanged.
 
-| Color       | oklch               |
-|-------------|---------------------|
-| Red         | oklch(0.2, 0.05, 0)   |
-| Brown       | oklch(0.2, 0.05, 60)  |
-| Lime        | oklch(0.2, 0.05, 120) |
-| Wintergreen | oklch(0.2, 0.05, 180) |
-| Blue        | oklch(0.2, 0.05, 240) |
-| Purple      | oklch(0.2, 0.05, 300) |
+The six authoritative positional colors are:
+
+| Color       | RGB Hex   |
+|-------------|-----------|
+| Red         | `#A04848` |
+| Brown       | `#7C5B3F` |
+| Lime        | `#789146` |
+| Wintergreen | `#40947F` |
+| Blue        | `#4664A5` |
+| Purple      | `#7B5498` |
 
 #### Long Axis of a Block
 
@@ -41,10 +46,10 @@ Each layer contains three blocks. There are two type of Layer. North-South layer
 North-South layers are when the long axis of each block is aligned North to South. 
 East-West layers are when the long axis is aligned East to West. 
 
-| Layer Type   | Starting From | Colors                      |
-|--------------|---------------|-----------------------------|
-| North-South  | east          | Red, Lime, Blue             |
-| East-West    | south         | Wintergreen, Purple, Brown  |
+| Layer Type   | Position Order       | Colors                     |
+|--------------|----------------------|----------------------------|
+| North-South  | East, Middle, West   | Red, Lime, Blue            |
+| East-West    | South, Middle, North | Wintergreen, Purple, Brown |
 
 Note that these colors is to maximize purely contrast.
 
@@ -54,7 +59,8 @@ The Jenga tower. It consists of 54 blocks at the start, with 18 layers where the
 
 ### Base
 
-The base where the Jenga tower stands on. It's black, about 3 layers tall (~4.5 cm), and 2.5 x 2.5 meter squared in terms of area.
+The base where the Jenga tower stands on. It is black, about 3 layers tall
+(~4.5 cm), and 25 x 25 cm in area.
 
 ### Camera State
 
@@ -88,27 +94,33 @@ After every Push and PlaceBack, the simulation runs until settled or timed out.
 
 | Parameter       | Value                                  |
 |-----------------|----------------------------------------|
-| Settle check    | all block velocities below threshold   |
+| Settle check    | all blocks below 1e-3 m/s linear and 1e-3 rad/s angular velocity for 30 consecutive steps |
 | Settle timeout  | 3 seconds sim-time                     |
 | Timeout exceeded | treated as collapse                   |
+
+### Deterministic Tower Generation
+
+`reset(seed)` constructs the same exact prebuilt tower for every seed. Blocks
+use the standard dimensions, exact slot positions, and zero yaw offset. Mass
+and friction remain fixed. Seed support is retained for Mesocosm protocol
+compatibility and future scenario variants. Exact repeatability is guaranteed
+within the pinned Docker runtime. Milestone 2 loads this tower as an exact
+prebuilt snapshot without advancing physics. Settling begins when Push and
+PlaceBack actions are introduced.
 
 ## Player Loop (LLM mode)
 
 ### Reset
 
-`reset(seed, **params)` — builds the default tower, settles it to rest, and resets the camera. Returns the first observation.
+`reset(seed, **params)` — loads the exact prebuilt tower snapshot and resets the camera. Returns the first observation.
 
 ### Observation
 
-Every observation (from `reset` and every `step`) is a dictionary with:
-
-| Key            | Description                                                                                                          |
-|----------------|----------------------------------------------------------------------------------------------------------------------|
-| image          | a render from the camera's current position, taken after the action has fully completed and the tower has settled.   |
-| camera         | the camera's current pose, reported back so the player can calibrate intent against result: { azimuth, pitch, distance, target_block }. |
-| blocks_removed | count of successfully extracted blocks so far.                                                                       |
-| available_slots | during PlaceBack phase: list of open slots (Left, Middle, Right) on the next top layer. Null otherwise.              |
-| log            | array of the last 5 action+annotation pairs (most recent first). Empty on first observation from reset.              |
+The agent-facing observation payload is the rendered PNG only. The environment
+reports non-privileged metadata through the observation's `system_prompt`:
+camera pose, removal count, available placement slots, current phase, and the
+last five action outcomes. Replay-only state stays in string-valued `info`
+fields and is not shown to the model.
 
 #### Render
 
@@ -119,14 +131,10 @@ without harsh contrast or blown-out highlights that would obscure block colors
 for the LLM.
 
 ### Action Space
-Exactly one action is submitted per `step` call. Three action types: ChangeViewpoint, Push, PlaceBack. Every action includes an annotation where the player self-reports reasoning:
-
-| Field           | Description                        |
-|-----------------|------------------------------------|
-| action          | the action dict (ChangeViewpoint, Push, or PlaceBack) |
-| annotation.saw  | what the player observed           |
-| annotation.did  | what action it chose               |
-| annotation.why  | reasoning behind the choice        |
+Exactly one JSON action is submitted per `step` call. The three full benchmark
+action types are ChangeViewpoint, Push, and PlaceBack. Mesocosm records the
+model's response text separately for replay, so actions do not duplicate
+reasoning annotations.
 
 #### Change Viewpoint
 
@@ -148,7 +156,9 @@ Sets a new camera state. Tower state unchanged. Reward = 0.
 
 #### Place Back
 
-After a successful extraction, the agent may look (ChangeViewpoint) before placing, but must PlaceBack before any Push. Viewpoints during this phase count toward the action budget.
+After a successful extraction, the agent may look (ChangeViewpoint) before
+placing, but must PlaceBack before any Push. Viewpoints during this phase count
+toward the consecutive-viewpoint timeout.
 
 | Field    | Description                                                                                    |
 |----------|------------------------------------------------------------------------------------------------|
@@ -167,13 +177,15 @@ After a successful extraction, the agent may look (ChangeViewpoint) before placi
 
 | Outcome               | Reward   |
 |------------------------|----------|
-| Successful extraction  | 1/98     |
+| Successful extraction  | 1 raw point |
 | Change Viewpoint       | 0        |
 | PlaceBack              | 0        |
 | Invalid action         | -0.5     |
 | Collapse               | 0 (episode terminates) |
+| 10 consecutive viewpoints | -10 raw points (episode terminates) |
 
-Theoretical max: 98 extractions = 100% score.
+Theoretical max: 98 extractions = 100% score. Report the leaderboard score as
+`round(raw_points / 98 * 100, 2)`. Penalties can produce a score below 0.00.
 
 Invalid actions: pushing a removed block, pushing when PlaceBack is required, PlaceBack when no extraction happened, placing in an occupied slot, values outside allowed ranges.
 
@@ -190,7 +202,8 @@ A non-pushed block loses contact with something it should be in contact with aft
 | Condition    | Description                                                              |
 |--------------|--------------------------------------------------------------------------|
 | Collapse     | a non-pushed block loses a required contact                              |
-| Action budget | 10 actions without a successful extraction. Resets after each extraction. |
+| Viewpoint timeout | 10 consecutive ChangeViewpoint actions without a Push or PlaceBack. The counter resets after Push or PlaceBack. |
+| Perfect completion | 98 successful extractions |
 
 No retries; score is locked at termination.
 
@@ -216,8 +229,4 @@ The showcase is a Three.js replay viewer. Not authoritative — driven entirely 
 | Sound effects   | impact sounds on block collisions, extraction, collapse     |
 | 3D playback     | full tower replay with timeline scrubbing                   |
 | Camera replay   | replay the agent's camera movements                         |
-| AI reasoning    | display annotation (saw/did/why) per step                   |
-
-## TODO
-
-- Agent instructions / system prompt — what text does the AI receive explaining the rules, actions, and observations?
+| AI reasoning    | display Mesocosm-exported model reasoning per step          |

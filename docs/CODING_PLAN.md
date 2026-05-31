@@ -5,8 +5,8 @@
 | Component | Choice        |
 |-----------|---------------|
 | Physics   | PyBullet      |
-| Rendering | PyBullet built-in or Pillow post-process |
-| Language  | Python 3.14   |
+| Rendering | PyBullet TinyRenderer |
+| Language  | Dockerized Python 3.11 |
 | Platform  | Mesocosm (bench_common SDK) |
 
 ## Repository Layout
@@ -41,7 +41,8 @@ jenga-bench/
 | Rolling friction   | 0.02        |
 | Spinning friction  | 0.02        |
 
-Deterministic under (seed + action sequence). All randomness via `np.random.default_rng(seed)`. No global RNG, no timestamps, no nondeterministic iteration order.
+Deterministic under the action sequence. Every seed currently builds the same
+exact prebuilt tower. Seed support remains for future scenario variants.
 
 ## Block Constants (tower.py)
 
@@ -56,10 +57,18 @@ BLOCK_MASS = 0.120  # 120 g
 
 - 18 layers × 3 blocks = 54 blocks
 - Bottom layer North-South, alternating
-- Each block gets a unique ID: (layer, color)
-- Block colors assigned per DESIGN.md color table
-- Base: black box, ~4.5cm tall (3 layers), 2.5×2.5m
+- Each block gets an immutable internal ID independent of its visible color
+- Assign display colors dynamically from the current orientation and slot:
+  North-South layers use Red, Lime, Blue from East to West; East-West layers
+  use Wintergreen, Purple, Brown from South to North
+- Recolor extracted blocks when placed into a new top-layer slot
+- Base: black box, ~4.5cm tall (3 layers), 25×25cm
 - Floor: beneath base, for blocks to land on
+
+Use a 25×25cm base footprint. Build the same exact prebuilt tower for every
+seed: standard dimensions, exact slot positions, and zero yaw offset. In the
+static tower milestone, load this as a prebuilt snapshot without advancing
+physics. Start settling only when physical interaction actions are added.
 
 ## Camera (camera.py)
 
@@ -67,11 +76,11 @@ Orbital camera state: target_block, azimuth, pitch, distance. Render from curren
 
 ## Rendering (render.py)
 
-- 512×512 RGB PNG
+- 512×512 RGB PNG from PyBullet TinyRenderer
 - White background, black base
 - Studio-style diffuse lighting: high ambient, moderate diffuse, low specular (wood-like sheen for edge definition)
 - Soft shadows for depth cues
-- Blocks color-coded per oklch table (convert to RGB for rendering)
+- Blocks color-coded with the authoritative RGB palette in DESIGN.md
 
 ## Action Processing (actions.py)
 
@@ -97,12 +106,18 @@ Update camera state. No physics step.
 
 ```python
 SETTLE_TIMEOUT = 3.0
-VELOCITY_THRESHOLD = 1e-3
+LINEAR_VELOCITY_THRESHOLD = 1e-3
+ANGULAR_VELOCITY_THRESHOLD = 1e-3
+SETTLE_STABLE_STEPS = 30
 
 def settle(self):
     while sim_time < self.SETTLE_TIMEOUT:
         step_simulation()
-        if all_velocities_below(self.VELOCITY_THRESHOLD):
+        if all_velocities_below_for_consecutive_steps(
+            self.LINEAR_VELOCITY_THRESHOLD,
+            self.ANGULAR_VELOCITY_THRESHOLD,
+            self.SETTLE_STABLE_STEPS,
+        ):
             return SETTLED
     return COLLAPSE
 ```
@@ -137,6 +152,17 @@ Every step exports to info (as JSON strings per Mesocosm requirement):
 | camera_state | current camera pose                              |
 | events       | removal, collapse, rejection events             |
 
+## Scoring
+
+- Successful extraction: +1 raw point
+- Invalid action: -0.5 raw points
+- Collapse: terminate and preserve accumulated raw points
+- 10 consecutive ChangeViewpoint actions without Push or PlaceBack: terminate
+  and subtract 10 raw points
+- Reset the viewpoint counter after Push or PlaceBack
+- Perfect completion: 98 extractions
+- Leaderboard score: `round(raw_points / 98 * 100, 2)`, including negatives
+
 ## benchanything.json
 
 Update from scaffold to match Jenga:
@@ -144,26 +170,27 @@ Update from scaffold to match Jenga:
 | Field                  | Value                                |
 |------------------------|--------------------------------------|
 | id                     | jenga-bench                          |
-| observation_space.type | json                                 |
+| observation_space.type | image                                |
 | action_space.type      | json                                 |
-| reward.range           | { low: -1.0, high: 1.0 }            |
-| episode.max_steps      | 100 (tunable)                        |
+| reward.range           | { low: -10.0, high: 1.0 }           |
+| episode.max_steps      | 1000                                  |
 | episode.deterministic  | true                                 |
-| scoring.primary_metric | blocks_removed                       |
+| scoring.primary_metric | normalized_score                     |
 
-## Build Order
+## Incremental Build Order
 
-0. define dataclasses, enums, TypedDicts in each module before writing logic (Block/Layer in tower.py, CameraState in camera.py, action types in actions.py, etc.)
-1. sim.py + tower.py — get a tower standing in PyBullet
-2. camera.py + render.py — render an image of the tower
-3. env.py reset() — wire up to BaseEnv, return first observation
-4. actions.py ChangeViewpoint — camera movement works
-5. actions.py Push — force application, settling
-6. scoring.py — removal + collapse detection
-7. actions.py PlaceBack — drop block on top
-8. replay.py — export traces
-9. benchanything.json — update manifest
-10. tests — determinism, replay consistency, action validation
+1. Contract slice — deterministic placeholder PNG observations, ChangeViewpoint,
+   manifest, prompts, adapter compatibility, and focused tests
+2. Static tower — PyBullet setup, exact prebuilt snapshot geometry, and rendering
+3. Camera controls — orbital targeting and viewpoint-timeout verification
+4. Push slice — validation, force ramp, settling, and probe behavior
+5. Extraction and placement — held blocks, dynamic recoloring, top-layer slots,
+   and 98-extraction completion
+6. Collapse detection — support snapshots and deterministic scenario tuning
+7. Replay export — state frames and events in string-valued info fields
+8. Showcase viewer — Three.js playback, inspection, reasoning, and sound
+
+Complete and test each milestone before starting the next.
 
 ## Resources
 

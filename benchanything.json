@@ -1,28 +1,30 @@
 {
-  "id": "my-env",
+  "id": "jenga-bench",
   "adapter": "adapter.py",
-  "name": "My Environment",
-  "description": "One-sentence description of what this benchmark evaluates.",
+  "name": "JengaBench",
+  "description": "A deterministic visual benchmark for spatial reasoning and physical planning in an unstable Jenga tower.",
 
   "binding_vow": {
     "version": "1.0.0",
     "tier": "tier1",
-    "description": "Longer description of the task and what makes a good agent.",
+    "description": "Inspect rendered JengaBench camera views and return one structured action per turn. Milestone 1 exposes ChangeViewpoint only.",
 
     "observation_space": {
-      "type": "json",
-      "description": "{ \"question\": string }"
+      "type": "image",
+      "dtype": "image/png",
+      "description": "A PNG render from the current persistent camera viewpoint."
     },
 
     "action_space": {
-      "type": "text",
-      "description": "Free-text answer from the agent"
+      "type": "json",
+      "schema_ref": "#/schemas/change-viewpoint",
+      "description": "Milestone 1 JSON action: {\"type\":\"ChangeViewpoint\",\"azimuth\":number 0..360,\"pitch\":number -90..90,\"distance_cm\":number 20..120}"
     },
 
     "reward": {
-      "type": "binary",
-      "range": { "low": 0.0, "high": 1.0 },
-      "description": "1.0 if correct, 0.0 otherwise"
+      "type": "scalar",
+      "range": { "low": -10.0, "high": 1.0 },
+      "description": "Milestone 1: valid camera changes score 0, invalid actions score -0.5, and ten consecutive viewpoints terminate with -10."
     },
 
     "episode": {
@@ -30,20 +32,21 @@
       "deterministic_reset": true,
       "supports_seed": true,
       "parallel_episodes": 1,
-      "observability": "full"
+      "observability": "partial"
     },
 
     "techniques": []
   },
 
   "scoring": {
-    "primary_metric": "accuracy",
+    "primary_metric": "normalized_score",
     "higher_is_better": true,
     "metrics": [
       {
-        "name": "accuracy",
-        "type": "episode_reward",
-        "aggregation": "pass_rate"
+        "name": "normalized_score",
+        "type": "terminal_field",
+        "field": "normalized_score",
+        "aggregation": "mean"
       }
     ]
   }

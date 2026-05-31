@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>JengaBench Live Inspector</title>
+    <link rel="stylesheet" href="/static/styles.css?v=6">
+  </head>
+  <body>
+    <main class="layout">
+      <section class="panel">
+        <div class="heading">
+          <div>
+            <p class="eyebrow">JengaBench</p>
+            <h1>Live Tower Inspector</h1>
+          </div>
+          <div class="actions">
+            <button id="capture" type="button">Capture PNG</button>
+            <button id="reset" type="button">Reset camera</button>
+          </div>
+        </div>
+        <div id="viewport" class="viewport" aria-label="Drag to orbit and scroll to zoom">
+          <canvas id="frame" width="512" height="512" aria-label="Local live tower preview"></canvas>
+          <div id="loading" class="loading">Capturing PNG</div>
+        </div>
+        <p class="hint">Drag to orbit. Scroll to zoom. Local preview controls are unscored.</p>
+      </section>
+      <aside class="metadata">
+        <p class="eyebrow">Camera state</p>
+        <dl>
+          <div><dt>Azimuth</dt><dd><span id="azimuth">225.00</span>&deg;</dd></div>
+          <div><dt>Pitch</dt><dd><span id="pitch">15.00</span>&deg;</dd></div>
+          <div><dt>Distance</dt><dd><span id="distance">45.00</span> cm</dd></div>
+        </dl>
+        <div class="status"><span id="status-dot"></span><span id="status">Connecting</span></div>
+      </aside>
+    </main>
+    <script src="/static/app.js?v=6"></script>
+  </body>
+</html>

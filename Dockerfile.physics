@@ -1,0 +1,17 @@
+FROM python:3.11-slim
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt \
+    && pip install --no-cache-dir fastapi uvicorn \
+    && pip install --no-cache-dir \
+      "bench_common @ git+https://github.com/swecc-uw/swecc-core.git@d4b81907456b17f50a878d40980b5e6aa9b74c9b#subdirectory=services/bench/common"
+
+COPY . .
+
+CMD ["python", "-m", "unittest", "discover", "-s", "tests", "-v"]
