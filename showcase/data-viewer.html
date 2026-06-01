@@ -245,7 +245,7 @@ function renderStep(s) {
       <span class="step-reward-badge ${rClass}">${rText}</span>
     </div>
     ${evts.length ? '<div class="step-event-row">' + evts.map(e => `<span class="step-evt ${classifyEvent(e)}">${esc(e)}</span>`).join('') + '</div>' : ''}
-    ${a.context ? '<div class="step-context-text">' + esc(a.context) + '</div>' : ''}
+    ${a.see || a.context ? '<div class="step-context-text">' + (a.see ? '<b style="color:#6ab4e8">SEE:</b> ' + esc(a.see) + '<br><b style="color:#e8a050">DO:</b> ' + esc(a.do || '') + '<br><b style="color:#b07adb">NEXT:</b> ' + esc(a.next || '') : esc(a.context)) + '</div>' : ''}
   </div>`;
 }
 

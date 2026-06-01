@@ -262,7 +262,9 @@ class JengaBenchEnv(BaseEnv):
             {
                 "step": len(self._episode_replay["steps"]) + 1,
                 "action": action,
-                "context": action.get("context", "") if isinstance(action, dict) else "",
+                "see": action.get("see", "") if isinstance(action, dict) else "",
+                "do": action.get("do", "") if isinstance(action, dict) else "",
+                "next": action.get("next", "") if isinstance(action, dict) else "",
                 "reward": reward,
                 "terminated": self._terminated,
                 "truncated": False,
@@ -282,15 +284,18 @@ class JengaBenchEnv(BaseEnv):
         )
         return (
             "You are playing JengaBench. Use the image as the current camera view. "
-            'Return exactly one flat JSON action object. Every action must include '
-            '"context":"brief rationale". The action must be one of '
-            '{"type":"ChangeViewpoint","context":"brief rationale","direction":"N|NE|E|SE|S|SW|W|NW",'
+            'Return exactly one flat JSON action object. Every action must include three reasoning fields: '
+            '"see" (describe what you observe in the image), '
+            '"do" (explain why you chose this action), '
+            '"next" (state your plan after this move). '
+            "The action must be one of "
+            '{"type":"ChangeViewpoint","see":"...","do":"...","next":"...","direction":"N|NE|E|SE|S|SW|W|NW",'
             '"elevation_layer":1..18,"distance":"Close|Medium|Full",'
             '"target_block":{"layer":int,"color":"Blue|Green|Red"}} or '
-            '{"type":"Push","context":"brief rationale","layer":"1..one below current top layer","color":"Blue|Green|Red",'
+            '{"type":"Push","see":"...","do":"...","next":"...","layer":"1..one below current top layer","color":"Blue|Green|Red",'
             '"face":"North|South (odd layers) or East|West (even layers)","contact":"center|left|right",'
             '"intensity":"Gentle (barely moves block)|Firm (strong push)|Hard (full force, may topple tower)"} or '
-            '{"type":"PlaceBack","context":"brief rationale","position":"<one of available_placement_positions>"}. '
+            '{"type":"PlaceBack","see":"...","do":"...","next":"...","position":"<one of available_placement_positions>"}. '
             f"Camera: direction={self._camera.direction}, "
             f"elevation_layer={self._camera.elevation_layer}, "
             f"distance={self._camera.distance}. "
@@ -301,10 +306,13 @@ class JengaBenchEnv(BaseEnv):
             "Block orientation: odd layers (1,3,5,...) run North-South so push faces are North or South; "
             "even layers (2,4,6,...) run East-West so push faces are East or West. "
             f"Available placement positions: {', '.join(self._available_placement_positions()) or 'none'}. "
-            f"Last 5 contexts (oldest to newest): {context_history}. "
+            f"Last 5 action logs (oldest to newest): {context_history}. "
             "Only a fully extracted block resets the move countdown to 10; changing viewpoint, placing back, "
             "invalid actions, or pushes that do not extract a block still consume a move. "
-            "If the countdown reaches 0, the episode terminates with a -1 point penalty."
+            "If the countdown reaches 0, the episode terminates with a -1 point penalty. "
+            "After a block is extracted from a layer, that block no longer exists there — do not try to push it again. "
+            "Use Firm or Hard intensity to extract blocks; Gentle rarely pushes a block out. "
+            "Minimize viewpoint changes — each one costs a move."
         )
 
     def _camera_info(self) -> dict[str, Any]:
@@ -336,10 +344,16 @@ class JengaBenchEnv(BaseEnv):
     def _validate_action_context(action: Any) -> tuple[str | None, str | None]:
         if not isinstance(action, dict):
             return None, "action must be a JSON object"
-        context = action.get("context")
-        if not isinstance(context, str) or not context.strip():
-            return None, "context must be a non-empty string"
-        return context, None
+        see = action.get("see")
+        do = action.get("do")
+        nxt = action.get("next")
+        if not isinstance(see, str) or not see.strip():
+            return None, "see must be a non-empty string"
+        if not isinstance(do, str) or not do.strip():
+            return None, "do must be a non-empty string"
+        if not isinstance(nxt, str) or not nxt.strip():
+            return None, "next must be a non-empty string"
+        return f"SEE: {see.strip()} | DO: {do.strip()} | NEXT: {nxt.strip()}", None
 
     @staticmethod
     def _validate_change_viewpoint(action: Any) -> str | None:
