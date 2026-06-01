@@ -6,7 +6,7 @@
   "tags": ["tier1"],
 
   "binding_vow": {
-    "version": "1.3.0",
+    "version": "1.4.0",
     "tier": "tier1",
     "description": "Inspect rendered JengaBench camera views and return one flat JSON ChangeViewpoint, Push, or PlaceBack action per turn. Every action includes a short context rationale.",
 
