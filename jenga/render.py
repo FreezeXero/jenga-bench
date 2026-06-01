@@ -18,8 +18,8 @@ TOWER_MIDPOINT = RENDER.tower_midpoint
 
 
 DIRECTION_AZIMUTHS = {
-    "N": 0, "NE": 45, "E": 90, "SE": 135,
-    "S": 180, "SW": 225, "W": 270, "NW": 315,
+    "N": 0, "NE": 315, "E": 270, "SE": 225,
+    "S": 180, "SW": 135, "W": 90, "NW": 45,
 }
 
 BLOCK_HEIGHT = DEFAULT_SETTINGS.geometry.block_height
