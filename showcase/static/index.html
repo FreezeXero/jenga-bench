@@ -271,24 +271,32 @@
           <div class="full-replay-header">
             <span class="chip">Step Replay</span>
             <div class="replay-nav">
+              <span class="replay-score">Score <strong class="mono" id="replay-live-score">0.0</strong></span>
               <button class="btn btn-sm btn-outline" id="full-replay-play" onclick="toggleFullReplay()">▶ Play</button>
               <span class="replay-step-info" id="full-replay-frame-counter">— frames</span>
               <select class="replay-speed" id="replay-speed-select" onchange="setReplaySpeed(this.value)">
-                <option value="1000">1×</option>
-                <option value="500">2×</option>
-                <option value="250">4×</option>
+                <option value="0.25">0.25×</option>
+                <option value="0.5">0.5×</option>
+                <option value="1" selected>1×</option>
+                <option value="2">2×</option>
               </select>
             </div>
           </div>
           <div class="full-replay-body">
             <div class="full-replay-viewer">
-              <div class="full-replay-frame" id="full-replay-frame-main">
-                <canvas id="replay-canvas" width="620" height="620"></canvas>
-                <div class="full-replay-no-frame" id="full-replay-empty">Select a recorded step</div>
-              </div>
-              <div class="replay-detail" id="full-replay-info">
-                <div class="empty-state">Load replay data to begin</div>
-              </div>
+              <section class="replay-panel projection-panel">
+                <div class="replay-panel-title">Playable Projection</div>
+                <div class="full-replay-frame" id="full-replay-frame-main">
+                  <canvas id="replay-canvas" width="620" height="620"></canvas>
+                  <div class="full-replay-no-frame" id="full-replay-empty">Select a recorded step</div>
+                </div>
+              </section>
+              <section class="replay-panel state-panel">
+                <div class="replay-panel-title">AI Step State</div>
+                <div class="replay-detail" id="full-replay-info">
+                  <div class="empty-state">Load replay data to begin</div>
+                </div>
+              </section>
             </div>
             <div class="step-timeline" id="step-timeline"></div>
             <div class="replay-controls">
@@ -307,6 +315,7 @@
           <div class="stat-grid">
             <div class="stat-cell"><div class="stat-val highlight mono" id="stat-run-score">—</div><div class="stat-label">Score</div></div>
             <div class="stat-cell"><div class="stat-val mono" id="stat-run-episodes">—</div><div class="stat-label">Episodes</div></div>
+            <div class="stat-cell"><div class="stat-val mono" id="stat-run-extractions">—</div><div class="stat-label">Extracted Blocks</div></div>
           </div>
         </div>
       </div>
@@ -434,6 +443,9 @@
     document.getElementById('tab-' + name).classList.add('active');
     btn.classList.add('active');
     if (name === 'settings') loadSettings();
+    if (name === 'benchmark' && typeof recordedRenderer !== 'undefined') {
+      requestAnimationFrame(() => { recordedRenderer.resize(); recordedRenderer.render(); });
+    }
   }
 
   // ── MODE SWITCHING ──
@@ -584,6 +596,7 @@
   let fullReplaySpeed = 1;
   let replayAnimation = null;
   let replayLastTick = 0;
+  let replayBlockSizes = new Map();
 
   function el(tag, className, text) {
     const node = document.createElement(tag);
@@ -596,6 +609,23 @@
     return step.action?.type || (step.terminated ? 'Collapse' : 'Recorded');
   }
 
+  function isCollapse(step) {
+    return (step.events || []).some(event => String(event).includes('collapse'));
+  }
+
+  function cumulativeScore(index) {
+    return currentSteps.slice(0,index+1).reduce((score,step)=>score+Number(step.reward||0),0);
+  }
+
+  function timelineIcon(type, unavailable, collapsed) {
+    if(unavailable)return el('span','step-pill-symbol','?');
+    if(collapsed)return el('span','step-pill-symbol collapse-icon','💥');
+    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('class','step-pill-icon');icon.setAttribute('viewBox','0 0 80 80');
+    const use=document.createElementNS('http://www.w3.org/2000/svg','use');
+    const symbol=type==='ChangeViewpoint'?'icon-camera':type==='PlaceBack'?'icon-place':'icon-push';
+    use.setAttribute('href',`/static/icons.svg#${symbol}`);use.setAttributeNS('http://www.w3.org/1999/xlink','xlink:href',`/static/icons.svg#${symbol}`);icon.append(use);return icon;
+  }
+
   function cleanAction(action) {
     const cleaned = { ...(action || {}) };
     delete cleaned.context;
@@ -603,6 +633,21 @@
     delete cleaned.do;
     delete cleaned.next;
     return cleaned;
+  }
+
+  function inferReplayBlockSize(block) {
+    const layer=Number(String(block.id||'').match(/block-(\d+)/)?.[1]||1);
+    return layer%2?[.025,.075,.015]:[.075,.025,.015];
+  }
+
+  function hydrateReplayFrame(frame) {
+    if(!frame?.blocks)return frame;
+    const blocks=frame.blocks.map(block=>{
+      const size=block.size||replayBlockSizes.get(block.id)||inferReplayBlockSize(block);
+      replayBlockSizes.set(block.id,size);
+      return {...block,size:[...size]};
+    });
+    return {...frame,blocks};
   }
 
   class ReadOnlyReplayRenderer {
@@ -681,9 +726,9 @@
     }
     setFrame(frame) {
       this.frame=frame;if(!frame?.blocks?.length)return;
-      const positions=[],colors=[],normals=[],isDark=document.documentElement.getAttribute('data-theme')!=='light';
-      this.addBox({position:[0,0,-.05],size:[.8,.8,.01],color:isDark?[72,55,38]:[195,175,145]},positions,colors,normals);
-      this.addBox({position:[0,0,-.0225],size:[.25,.25,.045],color:isDark?[30,24,18]:[160,140,115]},positions,colors,normals);
+      const positions=[],colors=[],normals=[];
+      this.addBox({position:[0,0,-.05],size:[.8,.8,.01],color:[150,99,66]},positions,colors,normals);
+      this.addBox({position:[0,0,-.0225],size:[.25,.25,.045],color:[89,56,36]},positions,colors,normals);
       frame.blocks.forEach(block=>this.addBox(block,positions,colors,normals));this.vertexCount=positions.length/3;
       const gl=this.gl;gl.bindBuffer(gl.ARRAY_BUFFER,this.positions);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(positions),gl.STATIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER,this.colors);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(colors),gl.STATIC_DRAW);
@@ -701,7 +746,7 @@
       const eye=[target[0]+Math.cos(pitch)*Math.sin(yaw)*d,target[1]-Math.cos(pitch)*Math.cos(yaw)*d,target[2]+Math.sin(pitch)*d];
       const vp=multiply(perspective(52,this.canvas.width/this.canvas.height,.02,3),lookAt(eye,target));gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);
       if(this.shadow){gl.bindFramebuffer(gl.FRAMEBUFFER,this.shadow.framebuffer);gl.viewport(0,0,2048,2048);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.depthProgram);gl.uniformMatrix4fv(gl.getUniformLocation(this.depthProgram,'lightMatrix'),false,lm);this.bindPositions(this.depthProgram);gl.drawArrays(gl.TRIANGLES,0,this.vertexCount);gl.bindFramebuffer(gl.FRAMEBUFFER,null);}
-      gl.viewport(0,0,this.canvas.width,this.canvas.height);document.documentElement.getAttribute('data-theme')!=='light'?gl.clearColor(.08,.06,.05,1):gl.clearColor(.94,.91,.85,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      gl.viewport(0,0,this.canvas.width,this.canvas.height);gl.clearColor(1,1,1,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
       gl.useProgram(this.program);gl.uniformMatrix4fv(gl.getUniformLocation(this.program,'viewProjection'),false,vp);gl.uniformMatrix4fv(gl.getUniformLocation(this.program,'lightMatrix'),false,lm);gl.uniform3fv(gl.getUniformLocation(this.program,'lightDir'),this.lightDir);
       if(this.shadow){gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.shadow.depthTexture);gl.uniform1i(gl.getUniformLocation(this.program,'shadowMap'),0);}
       this.bindPositions(this.program);const color=gl.getAttribLocation(this.program,'color');gl.bindBuffer(gl.ARRAY_BUFFER,this.colors);gl.vertexAttribPointer(color,3,gl.FLOAT,false,0,0);gl.enableVertexAttribArray(color);
@@ -731,6 +776,7 @@
     document.getElementById('replay-run-select').value=id;
     document.getElementById('stat-run-score').textContent=activeReplay.score.toFixed(2);
     document.getElementById('stat-run-episodes').textContent=activeReplay.episodes.length;
+    document.getElementById('stat-run-extractions').textContent=activeReplay.successful_extractions;
     const select=document.getElementById('replay-episode-select');select.replaceChildren();
     activeReplay.episodes.forEach((episode,index)=>select.add(new Option(`Episode ${index+1} · ${episode.status}`,String(index))));
     selectReplayEpisode('0');
@@ -739,8 +785,8 @@
   function selectReplayEpisode(value) {
     const episode=activeReplay?.episodes[Number(value)]; if(!episode)return;
     document.getElementById('results-seed').textContent=episode.seed ?? '—';
-    document.getElementById('replay-warning').classList.add('hidden');
-    currentSteps=episode.steps||[];currentStepIdx=0;replayFrameIdx=0;replayInitialFrame=episode.initial_frame;replayCurrentFrame=episode.initial_frame;
+    document.getElementById('replay-warning').classList.toggle('hidden',episode.completeness!=='partial');
+    currentSteps=episode.steps||[];currentStepIdx=0;replayFrameIdx=0;replayBlockSizes=new Map();replayInitialFrame=hydrateReplayFrame(episode.initial_frame);replayCurrentFrame=replayInitialFrame;document.getElementById('replay-live-score').textContent='0.0';
     const slider=document.getElementById('replay-step-slider');slider.max=String(Math.max(currentSteps.length-1,0));slider.value='0';
     renderTimeline();if(currentSteps.length)showStep(0);
   }
@@ -748,8 +794,11 @@
   function renderTimeline() {
     const timeline=document.getElementById('step-timeline');timeline.replaceChildren();
     currentSteps.forEach((step,index)=>{
-      const type=actionType(step), unavailable=step.recording_status==='unavailable',button=el('button','step-pill'+(unavailable?' unavailable':type==='ChangeViewpoint'?' look':step.terminated?' fail':' push'),`${unavailable?'?':type==='ChangeViewpoint'?'◉':'↟'} ${step.step}`);
-      if(index===currentStepIdx)button.classList.add('active');button.onclick=()=>showStep(index);timeline.appendChild(button);
+      const type=actionType(step), unavailable=step.recording_status==='unavailable', collapsed=isCollapse(step), failed=collapsed||step.terminated, actionClass=type==='ChangeViewpoint'?' look':type==='PlaceBack'?' place':' push', item=el('div','step-timeline-item'), button=el('button','step-pill'+(unavailable?' unavailable':failed?' fail':actionClass));
+      button.append(timelineIcon(type,unavailable,collapsed),el('span','step-pill-number',String(step.step)));
+      if(Number(step.reward))item.append(el('span','step-pill-reward '+(step.reward>0?'positive':'negative'),`${step.reward>0?'+':''}${Number(step.reward).toFixed(1)}`));
+      else item.append(el('span','step-pill-reward-placeholder'));
+      if(index===currentStepIdx)button.classList.add('active');button.onclick=()=>showStep(index);item.append(button);timeline.appendChild(item);
     });
     document.getElementById('replay-counter').textContent=currentSteps.length?`${currentStepIdx+1} / ${currentSteps.length}`:'— / —';
   }
@@ -772,22 +821,22 @@
 
   function showStep(index) {
     if(!currentSteps.length)return;stopStepPlayback();currentStepIdx=Math.max(0,Math.min(currentSteps.length-1,index));const step=currentSteps[currentStepIdx];
-    document.getElementById('replay-step-slider').value=String(currentStepIdx);document.getElementById('full-replay-info').replaceChildren(makeStepInfo(step));renderTimeline();
+    document.getElementById('replay-step-slider').value=String(currentStepIdx);document.getElementById('replay-live-score').textContent=cumulativeScore(currentStepIdx).toFixed(1);document.getElementById('full-replay-info').replaceChildren(makeStepInfo(step));renderTimeline();
     const frames=framesForStep(step);if(step.recording_status==='unavailable'||!frames.length){document.getElementById('full-replay-empty').classList.remove('hidden');document.getElementById('full-replay-frame-counter').textContent='— frames';return;}
     document.getElementById('full-replay-empty').classList.add('hidden');replayFrameIdx=0;replayCurrentFrame=cloneReplayFrame(frames[0]);recordedRenderer.setFrame(replayCurrentFrame);updateFrameCounter(frames);if(frames.length>1)startStepPlayback();
   }
   function prevStep(){if(currentStepIdx>0)showStep(currentStepIdx-1);}
   function nextStep(){if(currentStepIdx<currentSteps.length-1)showStep(currentStepIdx+1);}
 
-  function framesForStep(step){if(step.recording_status==='unavailable')return[];if(step.physics_frames?.length)return step.physics_frames;if(step.tower_state?.length)return[{blocks:step.tower_state,phase:'recorded'}];if(replayInitialFrame?.blocks?.length)return[replayInitialFrame];return[];}
-  function cloneReplayFrame(frame){return{...frame,blocks:(frame.blocks||[]).map(block=>({...block,position:[...block.position],rotation:[...(block.rotation||[0,0,0,1])]}))};}
+  function framesForStep(step){if(step.recording_status==='unavailable')return[];const type=actionType(step),staticObservation=type==='ChangeViewpoint'||(step.events||[]).some(event=>String(event).startsWith('invalid_action:'));if(!staticObservation&&step.physics_frames?.length)return step.physics_frames.map(hydrateReplayFrame);if(step.tower_state?.length)return[hydrateReplayFrame({blocks:step.tower_state,phase:'recorded'})];if(replayInitialFrame?.blocks?.length)return[replayInitialFrame];return[];}
+  function cloneReplayFrame(frame){const hydrated=hydrateReplayFrame(frame);return{...hydrated,blocks:(hydrated.blocks||[]).map(block=>({...block,position:[...block.position],rotation:[...(block.rotation||[0,0,0,1])],size:[...block.size]}))};}
   function updateFrameCounter(frames){document.getElementById('full-replay-frame-counter').textContent=`${Math.min(replayFrameIdx+1,frames.length)} / ${frames.length} frames`;document.getElementById('replay-counter').textContent=`${currentStepIdx+1} / ${currentSteps.length}`;}
   function stopStepPlayback(){fullReplayPlaying=false;if(replayAnimation)cancelAnimationFrame(replayAnimation);replayAnimation=null;document.getElementById('full-replay-play').textContent='▶ Play';}
   function startStepPlayback(){const frames=framesForStep(currentSteps[currentStepIdx]);if(frames.length<2)return;fullReplayPlaying=true;replayLastTick=0;document.getElementById('full-replay-play').textContent='Ⅱ Pause';replayAnimation=requestAnimationFrame(tickFullReplay);}
   function applyReplayFrame(target){if(!replayCurrentFrame){replayCurrentFrame=cloneReplayFrame(target);recordedRenderer.setFrame(replayCurrentFrame);return;}const existing=new Map(replayCurrentFrame.blocks.map(block=>[block.id,block]));replayCurrentFrame={...target,blocks:target.blocks.map(block=>existing.get(block.id)||cloneReplayFrame({blocks:[block]}).blocks[0])};const starts=new Map(replayCurrentFrame.blocks.map(block=>[block.id,{position:[...block.position],rotation:[...(block.rotation||[0,0,0,1])]}]));const began=performance.now();function animate(now){const amount=Math.min(1,(now-began)/(1000/30));replayCurrentFrame.blocks.forEach(block=>{const from=starts.get(block.id),to=target.blocks.find(item=>item.id===block.id);block.position=from.position.map((value,i)=>value+amount*(to.position[i]-value));block.rotation=slerp(from.rotation,to.rotation,amount);if(to.color)block.color=to.color;if(to.size)block.size=to.size;});recordedRenderer.setFrame(replayCurrentFrame);if(amount<1)requestAnimationFrame(animate);}requestAnimationFrame(animate);}
   function toggleFullReplay(){if(fullReplayPlaying){stopStepPlayback();return;}const frames=framesForStep(currentSteps[currentStepIdx]||{});if(frames.length){replayFrameIdx=0;replayCurrentFrame=cloneReplayFrame(frames[0]);recordedRenderer.setFrame(replayCurrentFrame);updateFrameCounter(frames);startStepPlayback();}}
   function tickFullReplay(now){if(!fullReplayPlaying)return;const frames=framesForStep(currentSteps[currentStepIdx]);if(!replayLastTick||now-replayLastTick>=1000/30/fullReplaySpeed){replayLastTick=now;if(replayFrameIdx>=frames.length-1){stopStepPlayback();return;}replayFrameIdx+=1;applyReplayFrame(frames[replayFrameIdx]);updateFrameCounter(frames);}replayAnimation=requestAnimationFrame(tickFullReplay);}
-  function setReplaySpeed(val){fullReplaySpeed=1000/Number(val);}
+  function setReplaySpeed(val){fullReplaySpeed=Number(val);}
 
   function renderComparison() {
     const tabs=document.getElementById('model-tabs'),lb=document.getElementById('leaderboard');tabs.replaceChildren();lb.replaceChildren();

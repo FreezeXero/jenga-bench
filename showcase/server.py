@@ -349,8 +349,43 @@ def _clean_step(step: dict, index: int) -> dict:
 
 
 
+def _parse_int(value: object, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _legacy_episode_steps(episode: dict, info: dict) -> list[dict]:
+    step_count = max(_parse_int(episode.get("steps")), 0)
+    if step_count == 0:
+        return []
+    unavailable = [
+        {
+            "step": index + 1,
+            "recording_status": "unavailable",
+            "action": {},
+            "context": "",
+            "see": "",
+            "do": "",
+            "next": "",
+            "reward": 0.0,
+            "terminated": False,
+            "truncated": False,
+            "events": [],
+            "camera_state": {},
+            "agent_frame": None,
+            "tower_state": [],
+            "physics_frames": [],
+        }
+        for index in range(max(step_count - 1, 0))
+    ]
+    return [*unavailable, _clean_step({"info": info}, step_count - 1)]
+
+
 def _normalize_episode(payload: dict, episode: dict) -> dict | None:
     info = episode.get("terminal_info") if isinstance(episode.get("terminal_info"), dict) else {}
+    blocks_removed = _parse_int(info.get("blocks_removed"))
     replay = _json_value(info.get("episode_replay"), None)
     if isinstance(replay, dict) and isinstance(replay.get("steps"), list):
         return {
@@ -358,6 +393,7 @@ def _normalize_episode(payload: dict, episode: dict) -> dict | None:
             "seed": episode.get("seed"),
             "status": episode.get("status"),
             "total_reward": episode.get("total_reward", 0.0),
+            "successful_extractions": blocks_removed,
             "completeness": "complete",
             "initial_frame": replay.get("initial_frame"),
             "steps": [_clean_step(step, index) for index, step in enumerate(replay["steps"]) if isinstance(step, dict)],
@@ -372,10 +408,23 @@ def _normalize_episode(payload: dict, episode: dict) -> dict | None:
                 "seed": episode.get("seed"),
                 "status": episode.get("status"),
                 "total_reward": episode.get("total_reward", 0.0),
+                "successful_extractions": blocks_removed,
                 "completeness": "complete",
                 "initial_frame": None,
                 "steps": [_clean_step(step, index) for index, step in enumerate(turns) if isinstance(step, dict)],
             }
+    legacy_steps = _legacy_episode_steps(episode, info)
+    if legacy_steps:
+        return {
+            "id": episode_id,
+            "seed": episode.get("seed"),
+            "status": episode.get("status"),
+            "total_reward": episode.get("total_reward", 0.0),
+            "successful_extractions": blocks_removed,
+            "completeness": "partial",
+            "initial_frame": None,
+            "steps": legacy_steps,
+        }
     return None
 
 
@@ -393,6 +442,7 @@ def _normalize_replay(payload: dict) -> dict:
         "score": float((run.get("scores") or {}).get("normalized_score", 0.0)),
         "created_at": run.get("created_at"),
         "completed_at": run.get("completed_at"),
+        "successful_extractions": sum(episode["successful_extractions"] for episode in normalized_episodes),
         "episodes": normalized_episodes,
     }
 
@@ -409,6 +459,7 @@ def replay_catalog() -> list[dict]:
                 "score": replay["score"],
                 "status": replay["status"],
                 "episodes": len(replay["episodes"]),
+                "successful_extractions": replay["successful_extractions"],
                 "created_at": replay["created_at"],
             }
         )

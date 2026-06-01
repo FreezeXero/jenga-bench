@@ -48,7 +48,10 @@ class EnvironmentReplayTraceTests(unittest.TestCase):
             self.assertEqual(len(trace["steps"]), 2)
             self.assertTrue(trace["steps"][0]["agent_frame"].startswith("iVBOR"))
             self.assertEqual(trace["steps"][0]["physics_frames"], [])
-            self.assertEqual(trace["steps"][1]["context"], "Probe a middle block gently.")
+            self.assertEqual(trace["steps"][1]["see"], "")
+            self.assertEqual(trace["steps"][1]["do"], "")
+            self.assertEqual(trace["steps"][1]["next"], "")
+            self.assertEqual(trace["steps"][1]["action"]["context"], "Probe a middle block gently.")
             self.assertGreater(len(trace["steps"][1]["physics_frames"]), 1)
         finally:
             env.close()
@@ -75,21 +78,32 @@ class ShowcaseReplayApiTests(unittest.TestCase):
     def tearDownClass(cls) -> None:
         preview.close()
 
-    def test_catalog_and_legacy_detail(self) -> None:
+    def test_catalog_and_legacy_normalization(self) -> None:
         catalog = self.client.get("/api/replays")
         self.assertEqual(catalog.status_code, 200)
-        run_id = "8dfa6085-5301-40b4-a8c7-570ed06d978b"
-        self.assertIn(run_id, [item["id"] for item in catalog.json()])
-
-        detail = self.client.get(f"/api/replays/{run_id}")
-        self.assertEqual(detail.status_code, 200)
-        episode = detail.json()["episodes"][0]
+        self.assertGreater(len(catalog.json()), 0)
+        payload = {
+            "run": {"id": "legacy", "scores": {"normalized_score": 3.06}},
+            "episodes": [
+                {
+                    "id": "episode",
+                    "steps": 3,
+                    "terminal_info": {
+                        "blocks_removed": "3",
+                        "replay_frames": json.dumps([{"blocks": []}, {"blocks": []}]),
+                    },
+                }
+            ],
+        }
+        replay = _normalize_replay(payload)
+        episode = replay["episodes"][0]
         self.assertEqual(episode["completeness"], "partial")
-        self.assertEqual(len(episode["steps"]), 8)
-        self.assertTrue(all(step["recording_status"] == "unavailable" for step in episode["steps"][:7]))
-        self.assertEqual(episode["steps"][7]["recording_status"], "recorded")
-        self.assertGreater(len(episode["steps"][7]["physics_frames"]), 1)
-        self.assertEqual(episode["steps"][7]["action"], {})
+        self.assertEqual(len(episode["steps"]), 3)
+        self.assertTrue(all(step["recording_status"] == "unavailable" for step in episode["steps"][:2]))
+        self.assertEqual(episode["steps"][2]["recording_status"], "recorded")
+        self.assertGreater(len(episode["steps"][2]["physics_frames"]), 1)
+        self.assertEqual(episode["steps"][2]["action"], {})
+        self.assertEqual(replay["successful_extractions"], 3)
 
     def test_unknown_replay_is_rejected(self) -> None:
         self.assertEqual(self.client.get("/api/replays/not-a-run").status_code, 404)
@@ -134,10 +148,21 @@ class ShowcaseReplayApiTests(unittest.TestCase):
         self.assertIn("class ReadOnlyReplayRenderer", index)
         self.assertIn("createShadowFramebuffer", index)
         self.assertIn("startStepPlayback", index)
+        self.assertIn("recordedRenderer.resize(); recordedRenderer.render();", index)
+        self.assertIn("function hydrateReplayFrame", index)
+        self.assertIn("staticObservation=type==='ChangeViewpoint'", index)
         self.assertNotIn("Full Game Replay", index)
         self.assertNotIn("class RecordedTowerRenderer", index)
         self.assertNotIn("scrubReplay", index)
         self.assertIn("Partial replay", index)
+        self.assertIn('id="replay-live-score"', index)
+        self.assertIn('id="stat-run-extractions"', index)
+        self.assertIn("Playable Projection", index)
+        self.assertIn("AI Step State", index)
+        self.assertIn("/static/icons.svg#", index)
+        self.assertIn('<option value="0.25">0.25×</option>', index)
+        self.assertIn('<option value="0.5">0.5×</option>', index)
+        self.assertNotIn('<option value="250">4×</option>', index)
 
 
 if __name__ == "__main__":
