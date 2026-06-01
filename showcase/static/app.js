@@ -1,4 +1,4 @@
-const camera = { azimuth: 225, pitch: 15, distance_cm: 45 };
+const camera = { azimuth: 135, pitch: 15, distance_cm: 45 };
 const llmCamera = { direction: "SW", elevation_layer: 9, distance: "Full", target_layer: null, target_color: null };
 const viewport = document.querySelector("#viewport");
 const canvas = document.querySelector("#frame");
