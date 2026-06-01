@@ -25,6 +25,8 @@
   --fg-red:          oklch(56.8% 0.125 15.5);
   --fg-green:        oklch(56.8% 0.123 125.2);
   --canvas:          oklch(96.0% 0.011 49.9);
+  --pill-accent:     #e8721a;
+  --pill-accent-hover: #d4670f;
 }
 
 /* ════════════════════════════
@@ -50,6 +52,8 @@
   --fg-red:          oklch(85.2% 0.081 15.1);
   --fg-green:        oklch(85.2% 0.087 125.1);
   --canvas:          oklch(96.0% 0.011 49.9);
+  --pill-accent:     #e8721a;
+  --pill-accent-hover: #d4670f;
 }
 
 body {
@@ -169,13 +173,13 @@ body {
 .btn-sm { padding: 6px 12px; font-size: 12px; }
 
 .btn-accent {
-  background: oklch(48.5% 0.108 60.7);
+  background: var(--pill-accent);
   color: #fff;
-  border-color: oklch(48.5% 0.108 60.7);
+  border-color: var(--pill-accent);
   font-weight: 700;
 }
 
-.btn-accent:hover { background: oklch(55% 0.108 60.7); border-color: oklch(55% 0.108 60.7); }
+.btn-accent:hover { background: var(--pill-accent-hover); border-color: var(--pill-accent-hover); }
 .btn-accent:disabled { background: var(--base-high); color: var(--subtext); border-color: var(--surface-highest); }
 
 .btn-ghost { background: transparent; color: var(--subtext); border-color: var(--surface-highest); }
@@ -256,6 +260,20 @@ body {
 
 #viewport:hover { border-color: var(--surface-highest); }
 #viewport:active { cursor: grabbing; }
+
+.compass {
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 80px; height: 80px;
+  color: var(--text);
+  pointer-events: none;
+  z-index: 2;
+  transition: transform 0.15s ease-out;
+  filter: drop-shadow(0 1px 3px rgba(0,0,0,0.35));
+  background: rgba(0,0,0,0.45);
+  border-radius: 50%;
+  backdrop-filter: blur(6px);
+}
 #frame { display: block; width: 100%; aspect-ratio: 1; pointer-events: none; }
 #pybullet-frame { display: block; width: 100%; aspect-ratio: 1; pointer-events: none; object-fit: contain; }
 
@@ -454,8 +472,8 @@ body {
 }
 
 .llm-action-icon {
-  width: 56px;
-  height: 56px;
+  width: 80px;
+  height: 80px;
   color: var(--text);
   margin-bottom: 8px;
 }
@@ -651,7 +669,7 @@ body {
   color: var(--muted);
   border-color: var(--surface-highest);
 }
-.pill.active { background: oklch(48.5% 0.108 60.7); color: #fff; border-color: oklch(48.5% 0.108 60.7); }
+.pill.active { background: var(--pill-accent); color: #fff; border-color: var(--pill-accent); }
 .pill.active[data-val="Blue"]  { background: oklch(48.3% 0.099 242.0); color: #fff; border-color: oklch(48.3% 0.099 242.0); }
 .pill.active[data-val="Green"] { background: oklch(52.0% 0.128 149.0); color: #fff; border-color: oklch(52.0% 0.128 149.0); }
 .pill.active[data-val="Red"]   { background: oklch(48.4% 0.120 15.2);  color: #fff; border-color: oklch(48.4% 0.120 15.2); }
