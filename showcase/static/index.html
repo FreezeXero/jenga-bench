@@ -49,6 +49,16 @@
             <div class="viewport-hint" id="viewport-hint">Drag to orbit · Scroll to zoom</div>
             <div class="collapse-flash" id="collapse-flash"></div>
             <div class="viewport-status"><span class="vs-dot" id="vs-dot"></span><span id="status">Connecting</span></div>
+            <div class="compass" id="compass">
+              <svg viewBox="0 0 80 80" fill="none">
+                <circle cx="40" cy="40" r="36" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+                <text x="40" y="16" text-anchor="middle" font-size="14" font-weight="700" fill="#e8721a">N</text>
+                <text x="40" y="72" text-anchor="middle" font-size="11" font-weight="500" fill="rgba(255,255,255,0.8)">S</text>
+                <text x="72" y="44" text-anchor="middle" font-size="11" font-weight="500" fill="rgba(255,255,255,0.8)">E</text>
+                <text x="8" y="44" text-anchor="middle" font-size="11" font-weight="500" fill="rgba(255,255,255,0.8)">W</text>
+                <polygon points="40,20 37,28 43,28" fill="#e8721a"/>
+              </svg>
+            </div>
             <span id="outcome" class="hidden">—</span>
           </div>
         </div>
@@ -61,8 +71,8 @@
       <aside class="controls-col">
         <!-- SIDEBAR TABS -->
         <div class="sidebar-tabs">
-          <button class="sidebar-tab active" data-mode="human" onclick="switchMode('human', this)">Human</button>
-          <button class="sidebar-tab" data-mode="llm" onclick="switchMode('llm', this)">LLM</button>
+          <button class="sidebar-tab active" data-mode="human" onclick="switchMode('human', this)">Human View</button>
+          <button class="sidebar-tab" data-mode="llm" onclick="switchMode('llm', this)">LLM View</button>
         </div>
 
         <!-- SIM INFO (during animation, both modes) -->
@@ -148,11 +158,11 @@
           </div>
           <div class="card-title">Push</div>
           <div class="form-grid">
-            <div class="form-field full">
+            <div class="form-field full llm-only hidden">
               <label class="form-label">Layer</label>
               <input id="push-layer" class="form-input" type="number" min="1" max="18" value="8">
             </div>
-            <div class="form-field full">
+            <div class="form-field full llm-only hidden">
               <label class="form-label">Color</label>
               <div class="pill-group" id="color-pills">
                 <button class="pill active" data-val="Blue">Blue</button>
@@ -161,7 +171,7 @@
               </div>
               <select id="push-color" class="hidden"></select>
             </div>
-            <div class="form-field full">
+            <div class="form-field full llm-only hidden">
               <label class="form-label">Face</label>
               <div class="pill-group" id="face-pills">
                 <button class="pill active" data-val="North">North</button>
@@ -190,10 +200,13 @@
               </select>
             </div>
           </div>
-          <div class="card-actions">
-            <button id="push" class="btn btn-accent full-w">Push block</button>
-            <p id="sandbox-error" class="form-error"></p>
+          <div class="card-actions human-only">
+            <button id="confirm-push" class="btn btn-accent full-w" disabled>Select a block</button>
           </div>
+          <div class="card-actions llm-only hidden">
+            <button id="push" class="btn btn-accent full-w">Push block</button>
+          </div>
+          <p id="sandbox-error" class="form-error"></p>
         </div>
 
         <!-- PLACE BACK (place_back phase) -->
@@ -206,12 +219,12 @@
             <div class="form-field full">
               <label class="form-label">Placement</label>
               <div class="pill-group" id="placement-pills">
-                <button class="pill active" data-val="Left">Left</button>
+                <button class="pill" data-val="Left">Left</button>
                 <button class="pill" data-val="Middle">Middle</button>
                 <button class="pill" data-val="Right">Right</button>
               </div>
               <select id="place-position" class="hidden">
-                <option>Left</option><option>Middle</option><option>Right</option>
+                <option value="" selected></option><option>Left</option><option>Middle</option><option>Right</option>
               </select>
             </div>
           </div>
@@ -318,8 +331,17 @@
 
     const isLLM = mode === 'llm';
     document.getElementById('llm-action-selector').classList.toggle('hidden', !isLLM);
-    document.getElementById('viewport-hint').textContent = (isLLM && !sandboxBusy) ? 'Locked' : 'Drag to orbit · Scroll to zoom';
+    document.getElementById('compass').classList.toggle('hidden', isLLM);
+    document.getElementById('viewport-hint').textContent = isLLM
+      ? (sandboxBusy ? 'Drag to orbit · Scroll to zoom' : 'Locked')
+      : 'Click block to push · Drag to orbit';
     document.querySelectorAll('.card-illustration, .card-title').forEach(el => {
+      el.classList.toggle('hidden', isLLM);
+    });
+    document.querySelectorAll('.llm-only').forEach(el => {
+      el.classList.toggle('hidden', !isLLM);
+    });
+    document.querySelectorAll('.human-only').forEach(el => {
       el.classList.toggle('hidden', isLLM);
     });
     if (isLLM) {
@@ -408,7 +430,7 @@
 
   bindPills('contact-grid', 'push-contact');
   bindPills('strength-pills', 'push-intensity');
-  bindPills('placement-pills', 'place-position');
+  bindPills('placement-pills', 'place-position', () => updateActionControls());
   bindPills('direction-pills', 'cam-direction');
   bindPills('distance-pills', 'cam-distance');
 

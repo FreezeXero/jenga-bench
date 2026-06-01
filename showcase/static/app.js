@@ -52,15 +52,17 @@ function updatePlacementOptions() {
   const select = document.querySelector("#place-position");
   const available = scene?.available_placement_positions || [];
   const allPositions = ["Left", "Middle", "Right"];
+  const emptyOpt = new Option("", "", false, false);
   select.replaceChildren(
+    emptyOpt,
     ...allPositions.map((value) => {
       const option = new Option(value, value, false, false);
       option.disabled = !available.includes(value);
       return option;
     }),
   );
-  if (!available.includes(select.value)) {
-    select.value = firstEnabledOption(select);
+  if (select.value && !available.includes(select.value)) {
+    select.value = "";
   }
   setPillEnabled("placement-pills", available);
   syncPills("placement-pills", "place-position");
@@ -94,6 +96,8 @@ function updateMetadata() {
   document.querySelector("#azimuth").textContent = camera.azimuth.toFixed(2);
   document.querySelector("#pitch").textContent = camera.pitch.toFixed(2);
   document.querySelector("#distance").textContent = camera.distance_cm.toFixed(2);
+  const compass = document.querySelector("#compass");
+  if (compass) compass.style.transform = `rotate(${camera.azimuth}deg)`;
 }
 
 function setStatus(text, ok = false) {
@@ -172,6 +176,143 @@ function lookAt(eye, target) {
     right[2], up[2], backward[2], 0,
     -dot(right, eye), -dot(up, eye), -dot(backward, eye), 1,
   ];
+}
+
+function invert4x4(m) {
+  const inv = new Array(16);
+  inv[0]  =  m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
+  inv[4]  = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15] - m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
+  inv[8]  =  m[4]*m[9]*m[15]  - m[4]*m[11]*m[13] - m[8]*m[5]*m[15] + m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
+  inv[12] = -m[4]*m[9]*m[14]  + m[4]*m[10]*m[13] + m[8]*m[5]*m[14] - m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
+  inv[1]  = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
+  inv[5]  =  m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15] + m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
+  inv[9]  = -m[0]*m[9]*m[15]  + m[0]*m[11]*m[13] + m[8]*m[1]*m[15] - m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
+  inv[13] =  m[0]*m[9]*m[14]  - m[0]*m[10]*m[13] - m[8]*m[1]*m[14] + m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
+  inv[2]  =  m[1]*m[6]*m[15]  - m[1]*m[7]*m[14]  - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7]  - m[13]*m[3]*m[6];
+  inv[6]  = -m[0]*m[6]*m[15]  + m[0]*m[7]*m[14]  + m[4]*m[2]*m[15] - m[4]*m[3]*m[14] - m[12]*m[2]*m[7]  + m[12]*m[3]*m[6];
+  inv[10] =  m[0]*m[5]*m[15]  - m[0]*m[7]*m[13]  - m[4]*m[1]*m[15] + m[4]*m[3]*m[13] + m[12]*m[1]*m[7]  - m[12]*m[3]*m[5];
+  inv[14] = -m[0]*m[5]*m[14]  + m[0]*m[6]*m[13]  + m[4]*m[1]*m[14] - m[4]*m[2]*m[13] - m[12]*m[1]*m[6]  + m[12]*m[2]*m[5];
+  inv[3]  = -m[1]*m[6]*m[11]  + m[1]*m[7]*m[10]  + m[5]*m[2]*m[11] - m[5]*m[3]*m[10] - m[9]*m[2]*m[7]   + m[9]*m[3]*m[6];
+  inv[7]  =  m[0]*m[6]*m[11]  - m[0]*m[7]*m[10]  - m[4]*m[2]*m[11] + m[4]*m[3]*m[10] + m[8]*m[2]*m[7]   - m[8]*m[3]*m[6];
+  inv[11] = -m[0]*m[5]*m[11]  + m[0]*m[7]*m[9]   + m[4]*m[1]*m[11] - m[4]*m[3]*m[9]  - m[8]*m[1]*m[7]   + m[8]*m[3]*m[5];
+  inv[15] =  m[0]*m[5]*m[10]  - m[0]*m[6]*m[9]   - m[4]*m[1]*m[10] + m[4]*m[2]*m[9]  + m[8]*m[1]*m[6]   - m[8]*m[2]*m[5];
+  const det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
+  if (Math.abs(det) < 1e-10) return null;
+  const invDet = 1 / det;
+  return inv.map(v => v * invDet);
+}
+
+function unproject(ndcX, ndcY, ndcZ, invVP) {
+  const x = invVP[0]*ndcX + invVP[4]*ndcY + invVP[8]*ndcZ  + invVP[12];
+  const y = invVP[1]*ndcX + invVP[5]*ndcY + invVP[9]*ndcZ  + invVP[13];
+  const z = invVP[2]*ndcX + invVP[6]*ndcY + invVP[10]*ndcZ + invVP[14];
+  const w = invVP[3]*ndcX + invVP[7]*ndcY + invVP[11]*ndcZ + invVP[15];
+  return [x/w, y/w, z/w];
+}
+
+function conjugateQuat(q) {
+  return [-q[0], -q[1], -q[2], q[3]];
+}
+
+function raycastBlocks(clientX, clientY) {
+  if (!scene) return null;
+  const rect = canvas.getBoundingClientRect();
+  const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+  const ndcY = 1 - ((clientY - rect.top) / rect.height) * 2;
+
+  const yaw = camera.azimuth * Math.PI / 180;
+  const pitch = camera.pitch * Math.PI / 180;
+  const distance = camera.distance_cm / 100;
+  const eye = [
+    scene.target[0] + Math.cos(pitch) * Math.sin(yaw) * distance,
+    scene.target[1] - Math.cos(pitch) * Math.cos(yaw) * distance,
+    scene.target[2] + Math.sin(pitch) * distance,
+  ];
+  const vp = multiply(
+    perspective(52, canvas.width / canvas.height, .02, 3),
+    lookAt(eye, scene.target),
+  );
+  const invVP = invert4x4(vp);
+  if (!invVP) return null;
+
+  const near = unproject(ndcX, ndcY, -1, invVP);
+  const far = unproject(ndcX, ndcY, 1, invVP);
+  const dir = normalize(subtract(far, near));
+
+  let bestT = Infinity;
+  let bestBlock = null;
+  let bestFaceIdx = -1;
+  let bestHitLocal = null;
+
+  for (const block of scene.blocks) {
+    const half = block.size.map(v => v / 2);
+    const qInv = conjugateQuat(block.rotation || [0, 0, 0, 1]);
+    const localOrigin = rotate(subtract(near, block.position), qInv);
+    const localDir = rotate(dir, qInv);
+
+    let tMin = -Infinity, tMax = Infinity;
+    let entryAxis = 0;
+
+    for (let axis = 0; axis < 3; axis++) {
+      if (Math.abs(localDir[axis]) < 1e-10) {
+        if (localOrigin[axis] < -half[axis] || localOrigin[axis] > half[axis]) {
+          tMin = Infinity;
+          break;
+        }
+      } else {
+        let t1 = (-half[axis] - localOrigin[axis]) / localDir[axis];
+        let t2 = (half[axis] - localOrigin[axis]) / localDir[axis];
+        if (t1 > t2) [t1, t2] = [t2, t1];
+        if (t1 > tMin) { tMin = t1; entryAxis = axis; }
+        if (t2 < tMax) tMax = t2;
+      }
+    }
+
+    if (tMin <= tMax && tMax > 0 && tMin < bestT) {
+      const t = tMin > 0 ? tMin : 0;
+      bestT = t;
+      bestBlock = block;
+      bestFaceIdx = entryAxis;
+      bestHitLocal = localOrigin.map((o, i) => o + t * localDir[i]);
+    }
+  }
+
+  if (!bestBlock) return null;
+
+  const half = bestBlock.size.map(v => v / 2);
+  const faceNames = [
+    bestHitLocal[0] < 0 ? "West" : "East",
+    bestHitLocal[1] < 0 ? "South" : "North",
+    bestHitLocal[2] < 0 ? "Bottom" : "Top",
+  ];
+  const faceName = faceNames[bestFaceIdx];
+
+  let contact = "center";
+  if (bestFaceIdx === 0) {
+    const rel = bestHitLocal[1] / half[1];
+    contact = rel < -0.33 ? "left" : rel > 0.33 ? "right" : "center";
+  } else if (bestFaceIdx === 1) {
+    const rel = bestHitLocal[0] / half[0];
+    contact = rel < -0.33 ? "left" : rel > 0.33 ? "right" : "center";
+  }
+
+  return { block: bestBlock, face: faceName, contact, hitLocal: bestHitLocal };
+}
+
+let hoveredBlockId = null;
+let selectedBlockId = null;
+let selectedPush = null;
+let pendingPushReselect = null;
+
+function updateConfirmButton() {
+  const btn = document.querySelector("#confirm-push");
+  if (!btn) return;
+  btn.disabled = !selectedPush || sandboxBusy;
+  if (selectedPush) {
+    btn.textContent = `Push from ${selectedPush.face}`;
+  } else {
+    btn.textContent = "Select a block";
+  }
 }
 
 function compileShader(type, source) {
@@ -289,12 +430,77 @@ function lightMatrix() {
   return multiply(ortho(0.5, 0.01, 2.0), lookAt(lightPos, target));
 }
 
+function createLineProgram() {
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compileShader(gl.VERTEX_SHADER, `
+    attribute vec3 position;
+    attribute vec3 color;
+    uniform mat4 viewProjection;
+    varying vec3 lineColor;
+    void main() {
+      gl_Position = viewProjection * vec4(position, 1.0);
+      lineColor = color;
+    }
+  `));
+  gl.attachShader(prog, compileShader(gl.FRAGMENT_SHADER, `
+    precision mediump float;
+    varying vec3 lineColor;
+    void main() {
+      gl_FragColor = vec4(lineColor, 1.0);
+    }
+  `));
+  gl.linkProgram(prog);
+  return prog;
+}
+
+const lineProgram = createLineProgram();
 const depthProgram = createDepthProgram();
 const mainProgram = createMainProgram();
 const shadowFB = createShadowFramebuffer();
 const positionBuffer = gl.createBuffer();
 const colorBuffer = gl.createBuffer();
 const normalBuffer = gl.createBuffer();
+const edgePositionBuffer = gl.createBuffer();
+const edgeColorBuffer = gl.createBuffer();
+const edgeNormalBuffer = gl.createBuffer();
+let edgeVertexCount = 0;
+
+const EDGE_PAIRS = [
+  [0,1],[1,2],[2,3],[3,0],
+  [4,5],[5,6],[6,7],[7,4],
+  [0,4],[1,5],[2,6],[3,7],
+];
+
+const OUTLINE_OFFSET = 0.0012;
+
+function appendOutline(box, edgePositions, edgeColors, edgeNormals) {
+  const [cx, cy, cz] = box.position;
+  const [sx, sy, sz] = box.size.map((value) => value / 2);
+  const rotation = box.rotation || [0, 0, 0, 1];
+  const d = OUTLINE_OFFSET;
+  const vertices = [
+    [-(sx+d), -(sy+d), -(sz+d)], [(sx+d), -(sy+d), -(sz+d)], [(sx+d), (sy+d), -(sz+d)], [-(sx+d), (sy+d), -(sz+d)],
+    [-(sx+d), -(sy+d), (sz+d)], [(sx+d), -(sy+d), (sz+d)], [(sx+d), (sy+d), (sz+d)], [-(sx+d), (sy+d), (sz+d)],
+  ].map((v) => rotate(v, rotation).map((val, i) => val + [cx, cy, cz][i]));
+  const faceNormals = [
+    [0, 0, -1], [0, 0, 1],
+    [0, -1, 0], [1, 0, 0],
+    [0, 1, 0], [-1, 0, 0],
+  ].map((n) => rotate(n, rotation));
+  const faces = [
+    [0, 3, 2, 1], [4, 5, 6, 7],
+    [0, 1, 5, 4], [1, 2, 6, 5],
+    [2, 3, 7, 6], [3, 0, 4, 7],
+  ];
+  const rgb = box._edgeColor || [0, 0, 0];
+  for (let i = 0; i < faces.length; i++) {
+    for (const index of [0, 1, 2, 0, 2, 3]) {
+      edgePositions.push(...vertices[faces[i][index]]);
+      edgeColors.push(...rgb);
+      edgeNormals.push(...faceNormals[i]);
+    }
+  }
+}
 
 function appendBox(box, positions, colors, normals) {
   const [cx, cy, cz] = box.position;
@@ -315,29 +521,57 @@ function appendBox(box, positions, colors, normals) {
     [2, 3, 7, 6], [3, 0, 4, 7],
   ];
   const rgb = box.color.map((channel) => channel / 255);
+  const tint = box._tint || null;
+  const finalRgb = tint
+    ? rgb.map((c, i) => Math.min(1, c * (1 - tint.strength) + tint.color[i] * tint.strength))
+    : rgb;
   for (let i = 0; i < faces.length; i++) {
     for (const index of [0, 1, 2, 0, 2, 3]) {
       positions.push(...vertices[faces[i][index]]);
-      colors.push(...rgb);
+      colors.push(...finalRgb);
       normals.push(...faceNormals[i]);
     }
   }
 }
 
+const ORANGE_TINT = [245/255, 166/255, 83/255];
+const EDGE_COLOR = [134/255, 249/255, 255/255];
+
 function loadGeometry() {
   const positions = [];
   const colors = [];
   const normals = [];
+  const isHuman = typeof currentMode === "undefined" || currentMode === "human";
+  for (const block of scene.blocks) {
+    block._tint = null;
+    block._tint = null;
+  }
   const boxes = [scene.base, ...scene.blocks];
   if (scene.floor) boxes.unshift(scene.floor);
-  for (const box of boxes) appendBox(box, positions, colors, normals);
+  const edgePositions = [];
+  const edgeColors = [];
+  const edgeNormals = [];
+  for (const box of boxes) {
+    appendBox(box, positions, colors, normals);
+    if (isHuman && (box.id === selectedBlockId || box.id === hoveredBlockId)) {
+      box._edgeColor = EDGE_COLOR;
+      appendOutline(box, edgePositions, edgeColors, edgeNormals);
+    }
+  }
   vertexCount = positions.length / 3;
+  edgeVertexCount = edgePositions.length / 3;
   gl.bindBuffer(gl.ARRAY_BUFFER, positionBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(positions), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, colorBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(colors), gl.STATIC_DRAW);
   gl.bindBuffer(gl.ARRAY_BUFFER, normalBuffer);
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(normals), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, edgePositionBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(edgePositions), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, edgeColorBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(edgeColors), gl.STATIC_DRAW);
+  gl.bindBuffer(gl.ARRAY_BUFFER, edgeNormalBuffer);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(edgeNormals), gl.STATIC_DRAW);
 }
 
 function bindPositions(prog) {
@@ -397,6 +631,18 @@ function renderScene() {
   gl.vertexAttribPointer(normal, 3, gl.FLOAT, false, 0, 0);
   gl.enableVertexAttribArray(normal);
   gl.drawArrays(gl.TRIANGLES, 0, vertexCount);
+
+  if (edgeVertexCount > 0) {
+    gl.cullFace(gl.FRONT);
+    gl.bindBuffer(gl.ARRAY_BUFFER, edgePositionBuffer);
+    gl.vertexAttribPointer(gl.getAttribLocation(mainProgram, "position"), 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, edgeColorBuffer);
+    gl.vertexAttribPointer(color, 3, gl.FLOAT, false, 0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, edgeNormalBuffer);
+    gl.vertexAttribPointer(normal, 3, gl.FLOAT, false, 0, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, edgeVertexCount);
+    gl.cullFace(gl.BACK);
+  }
 }
 
 function applyScene(nextScene, { preserveCamera = false } = {}) {
@@ -437,6 +683,18 @@ function setBusy(busy) {
 function updateActionControls() {
   const phase = scene?.phase;
   const isLLM = typeof currentMode !== "undefined" && currentMode === "llm";
+  if (isLLM || sandboxTerminated) {
+    hoveredBlockId = null;
+    selectedBlockId = null;
+    selectedPush = null;
+  } else if (phase !== "push") {
+    hoveredBlockId = null;
+  } else if (phase === "push" && selectedPush) {
+    selectedBlockId = scene.blocks.find(b =>
+      b.layer === selectedPush.layer && b.color_name === selectedPush.color
+    )?.id ?? null;
+  }
+  updateConfirmButton();
   const wantsPush = !isLLM || (typeof llmAction !== "undefined" && llmAction === "push");
   const showPush = phase === "push" && !sandboxBusy && !sandboxTerminated && wantsPush;
   const showPlace = phase === "place_back" && !sandboxBusy && !sandboxTerminated && wantsPush;
@@ -505,6 +763,18 @@ function applyResult(message) {
   setBusy(false);
   document.querySelector("#outcome").textContent = message.outcome;
   document.querySelector("#frame-count").textContent = String(message.frame_count);
+  if (pendingPushReselect && !sandboxTerminated && scene?.phase === "push") {
+    const p = pendingPushReselect;
+    const block = scene.blocks.find(b => b.layer === p.layer && b.color_name === p.color);
+    if (block) {
+      selectedBlockId = block.id;
+      selectedPush = { ...p };
+      loadGeometry();
+      renderScene();
+      updateConfirmButton();
+    }
+  }
+  pendingPushReselect = null;
 }
 
 function framesVisuallyMatch(first, second) {
@@ -538,7 +808,13 @@ function playQueuedFrames() {
 function connectSandbox() {
   socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ws/sandbox`);
   socket.addEventListener("open", () => setStatus("Local preview", true));
-  socket.addEventListener("close", () => setStatus("Sandbox disconnected"));
+  socket.addEventListener("close", () => {
+    setStatus("Sandbox disconnected");
+    if (sandboxBusy) {
+      sandboxTerminated = true;
+      setBusy(false);
+    }
+  });
   socket.addEventListener("message", (event) => {
     const message = JSON.parse(event.data);
     console.log("[ws]", message.type, message);
@@ -623,30 +899,118 @@ async function loadScene(path = "/api/state", method = "GET") {
   applyScene(await response.json());
 }
 
+let pointerStart = null;
+
+function canClickPush() {
+  const isHuman = typeof currentMode === "undefined" || currentMode === "human";
+  return isHuman && scene?.phase === "push" && !sandboxBusy && !sandboxTerminated;
+}
+
 viewport.addEventListener("pointerdown", (event) => {
   drag = { x: event.clientX, y: event.clientY };
+  pointerStart = { x: event.clientX, y: event.clientY };
   viewport.setPointerCapture(event.pointerId);
 });
 
 viewport.addEventListener("pointermove", (event) => {
-  if (!drag) return;
-  const deltaX = event.clientX - drag.x;
-  const deltaY = event.clientY - drag.y;
-  camera.azimuth = (camera.azimuth - deltaX * .55 + 360) % 360;
-  camera.pitch = clamp(camera.pitch + deltaY * .4, -45, 75);
-  drag = { x: event.clientX, y: event.clientY };
-  updateMetadata();
-  renderScene();
+  if (drag) {
+    const deltaX = event.clientX - drag.x;
+    const deltaY = event.clientY - drag.y;
+    camera.azimuth = (camera.azimuth - deltaX * .55 + 360) % 360;
+    camera.pitch = clamp(camera.pitch + deltaY * .4, -45, 75);
+    drag = { x: event.clientX, y: event.clientY };
+    updateMetadata();
+    renderScene();
+  } else if (canClickPush()) {
+    const hit = raycastBlocks(event.clientX, event.clientY);
+    const newId = hit ? hit.block.id : null;
+    if (newId !== hoveredBlockId) {
+      hoveredBlockId = newId;
+      loadGeometry();
+      renderScene();
+    }
+  }
 });
 
-viewport.addEventListener("pointerup", () => { drag = null; });
-viewport.addEventListener("pointercancel", () => { drag = null; });
+viewport.addEventListener("pointerup", (event) => {
+  const wasDrag = pointerStart && (
+    Math.abs(event.clientX - pointerStart.x) > 5 ||
+    Math.abs(event.clientY - pointerStart.y) > 5
+  );
+  drag = null;
+  pointerStart = null;
+
+  if (wasDrag || !canClickPush()) return;
+
+  const hit = raycastBlocks(event.clientX, event.clientY);
+  if (!hit) {
+    if (selectedBlockId) {
+      selectedBlockId = null;
+      selectedPush = null;
+      loadGeometry();
+      renderScene();
+      updateConfirmButton();
+    }
+    return;
+  }
+
+  const block = hit.block;
+  const layer = block.layer;
+  const parity = layer % 2 ? "odd" : "even";
+  const validFaces = faceOptions[parity];
+  let face = hit.face;
+  if (!validFaces.includes(face)) {
+    const yaw = camera.azimuth * Math.PI / 180;
+    if (parity === "odd") {
+      face = Math.cos(yaw) > 0 ? "South" : "North";
+    } else {
+      face = Math.sin(yaw) > 0 ? "East" : "West";
+    }
+  }
+
+  if (selectedBlockId === block.id && selectedPush?.face === face) {
+    selectedBlockId = null;
+    selectedPush = null;
+  } else {
+    selectedBlockId = block.id;
+    selectedPush = { layer, color: block.color_name, face };
+  }
+  loadGeometry();
+  renderScene();
+  updateConfirmButton();
+});
+
+viewport.addEventListener("pointercancel", () => { drag = null; pointerStart = null; });
 viewport.addEventListener("wheel", (event) => {
   event.preventDefault();
   camera.distance_cm = clamp(camera.distance_cm + event.deltaY * .035, 20, 120);
   updateMetadata();
   renderScene();
 }, { passive: false });
+
+document.querySelector("#confirm-push").addEventListener("click", () => {
+  if (!selectedPush || sandboxBusy) return;
+  const contact = document.querySelector("#push-contact").value || "center";
+  const intensity = document.querySelector("#push-intensity").value || "Gentle";
+  document.querySelector("#sandbox-error").textContent = "";
+  document.querySelector("#outcome").textContent = "-";
+  const pushData = { ...selectedPush };
+  pendingPushReselect = { ...selectedPush };
+  selectedBlockId = null;
+  selectedPush = null;
+  loadGeometry();
+  renderScene();
+  setBusy(true);
+  socket.send(JSON.stringify({
+    type: "Push",
+    layer: pushData.layer,
+    color: pushData.color,
+    face: pushData.face,
+    contact: contact,
+    intensity: intensity,
+  }));
+  updateConfirmButton();
+});
 
 document.querySelector("#push-layer").addEventListener("input", updatePushOptions);
 document.querySelector("#push").addEventListener("click", () => {
@@ -678,6 +1042,10 @@ document.querySelector("#reset-tower").addEventListener("click", () => {
   animation = null;
   framePlaying = false;
   sandboxTerminated = false;
+  hoveredBlockId = null;
+  selectedBlockId = null;
+  selectedPush = null;
+  updateConfirmButton();
   setBusy(true);
   socket.send(JSON.stringify({
     type: "Reset",
