@@ -28,7 +28,7 @@ from jenga.sim import (
 )
 from jenga.tower import BASE_CENTER_Z, BASE_SIZE, FLOOR_CENTER_Z, FLOOR_SIZE, Orientation
 
-DEFAULT_CAMERA = CameraPose(azimuth=225.0, pitch=15.0, distance_cm=45.0)
+DEFAULT_CAMERA = CameraPose(azimuth=135.0, pitch=15.0, distance_cm=45.0)
 MIN_INSPECTOR_PITCH = -45.0
 MAX_INSPECTOR_PITCH = 75.0
 STATIC_DIR = Path(__file__).with_name("static")

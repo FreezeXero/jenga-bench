@@ -1,4 +1,4 @@
-const camera = { azimuth: 225, pitch: 15, distance_cm: 45 };
+const camera = { azimuth: 135, pitch: 15, distance_cm: 45 };
 const llmCamera = { direction: "SW", elevation_layer: 9, distance: "Full", target_layer: null, target_color: null };
 const viewport = document.querySelector("#viewport");
 const canvas = document.querySelector("#frame");
@@ -554,9 +554,9 @@ function loadGeometry() {
   const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   for (const box of boxes) {
     if (box === scene.floor) {
-      box._colorOverride = isDark ? [72, 55, 38] : [195, 175, 145];
+      box._colorOverride = [150, 99, 66];
     } else if (box === scene.base) {
-      box._colorOverride = isDark ? [30, 24, 18] : [160, 140, 115];
+      box._colorOverride = [89, 56, 36];
     } else {
       box._colorOverride = null;
     }
@@ -619,7 +619,7 @@ function renderScene() {
   }
   gl.viewport(0, 0, canvas.width, canvas.height);
   const isDarkMode = document.documentElement.getAttribute('data-theme') !== 'light';
-  isDarkMode ? gl.clearColor(0.08, 0.06, 0.05, 1) : gl.clearColor(0.94, 0.91, 0.85, 1);
+  gl.clearColor(1.0, 1.0, 1.0, 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.useProgram(mainProgram);
   gl.uniformMatrix4fv(gl.getUniformLocation(mainProgram, "viewProjection"), false, matrix);
@@ -1067,7 +1067,7 @@ document.querySelector("#reset-tower").addEventListener("click", () => {
   document.querySelector("#frame-count").textContent = "0";
 });
 
-const DIRECTION_AZIMUTHS = { N: 0, NE: 45, E: 90, SE: 135, S: 180, SW: 225, W: 270, NW: 315 };
+const DIRECTION_AZIMUTHS = { N: 0, NE: 315, E: 270, SE: 225, S: 180, SW: 135, W: 90, NW: 45 };
 const DISTANCE_CM = { Close: 15, Medium: 30, Full: 45 };
 
 document.querySelector("#change-viewpoint").addEventListener("click", () => {
