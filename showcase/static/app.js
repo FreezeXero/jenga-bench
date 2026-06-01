@@ -1,5 +1,5 @@
 const camera = { azimuth: 225, pitch: 15, distance_cm: 45 };
-const llmCamera = { azimuth: 225, pitch: 15, distance_cm: 45, elevation_layer: 9, direction: "SW" };
+const llmCamera = { direction: "SW", elevation_layer: 9, distance: "Full", target_layer: null, target_color: null };
 const viewport = document.querySelector("#viewport");
 const canvas = document.querySelector("#frame");
 const loading = document.querySelector("#loading");
@@ -378,13 +378,18 @@ function setBusy(busy) {
   sandboxBusy = busy;
   document.querySelector("#panel-sim").classList.toggle("hidden", !busy);
   document.querySelector("#inspector-layout").classList.toggle("busy", busy);
+  const isLLM = typeof currentMode !== "undefined" && currentMode === "llm";
+  const hint = document.querySelector("#viewport-hint");
   if (busy) {
     document.querySelector("#frame").classList.remove("hidden");
     document.querySelector("#pybullet-frame").classList.add("hidden");
-  } else if (typeof currentMode !== "undefined" && currentMode === "llm") {
+    if (hint) hint.textContent = "Drag to orbit · Scroll to zoom";
+  } else if (isLLM) {
     document.querySelector("#frame").classList.add("hidden");
     document.querySelector("#pybullet-frame").classList.remove("hidden");
     if (typeof fetchPybulletFrame === "function") fetchPybulletFrame();
+    Object.assign(camera, { azimuth: llmCamera.azimuth, pitch: llmCamera.pitch, distance_cm: llmCamera.distance_cm });
+    if (hint) hint.textContent = "Locked";
   }
   updateActionControls();
 }
@@ -402,6 +407,10 @@ function updateActionControls() {
   document.querySelector("#push").disabled = sandboxBusy;
   document.querySelector("#place-back").disabled = sandboxBusy;
   document.querySelector("#reset-tower").disabled = sandboxBusy;
+  const pushLabel = document.querySelector('.llm-action-label[data-action="push"]');
+  if (pushLabel) {
+    pushLabel.textContent = phase === "place_back" ? "Place Back" : "Push";
+  }
 }
 
 function applyFrame(frame, onComplete) {
@@ -600,13 +609,14 @@ document.querySelector("#change-viewpoint").addEventListener("click", () => {
   const dir = document.querySelector("#cam-direction").value || "SW";
   const elevLayer = clamp(Number(document.querySelector("#cam-elevation").value) || 9, 1, 18);
   const dist = document.querySelector("#cam-distance").value || "Full";
+  const targetLayer = Number(document.querySelector("#cam-target-layer").value) || null;
+  const targetColor = document.querySelector("#cam-target-color").value || null;
 
-  llmCamera.azimuth = DIRECTION_AZIMUTHS[dir] ?? 225;
-  llmCamera.distance_cm = DISTANCE_CM[dist] ?? 45;
-  llmCamera.elevation_layer = elevLayer;
   llmCamera.direction = dir;
+  llmCamera.elevation_layer = elevLayer;
   llmCamera.distance = dist;
-  llmCamera.pitch = 15;
+  llmCamera.target_layer = targetLayer;
+  llmCamera.target_color = targetColor;
 
   updateMetadata();
   if (typeof fetchPybulletFrame === "function") fetchPybulletFrame();

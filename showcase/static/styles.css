@@ -445,6 +445,48 @@ body {
 .sidebar-tab:hover { color: var(--text); }
 .sidebar-tab.active { color: var(--fg-accent-2); border-bottom-color: var(--fg-accent-2); }
 
+/* LLM ACTION SELECTOR */
+#llm-action-selector {
+  padding: 16px 18px 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.llm-action-icon {
+  width: 56px;
+  height: 56px;
+  color: var(--text);
+  margin-bottom: 8px;
+}
+
+.llm-action-icon svg { width: 100%; height: 100%; }
+
+.llm-action-labels {
+  display: flex;
+  gap: 0;
+  width: 100%;
+}
+
+.llm-action-label {
+  font-family: 'Roboto', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 0 6px;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex: 1;
+  text-align: center;
+}
+
+.llm-action-label:hover { color: var(--text); }
+.llm-action-label.active { color: var(--fg-accent); border-bottom: 2px solid var(--fg-accent); }
+
 /* CARDS */
 .card {
   padding: 16px 18px;

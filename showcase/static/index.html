@@ -77,27 +77,14 @@
           </div>
         </div>
 
-        <!-- ACTION TYPE SELECTOR (LLM mode only) -->
-        <div class="card hidden" id="panel-action-type">
-          <div class="form-field full">
-            <label class="form-label">Action</label>
-            <div class="pill-group" id="action-type-pills">
-              <button class="pill" data-val="viewpoint" onclick="selectLLMAction('viewpoint')">
-                <svg viewBox="0 0 80 40" width="40" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px">
-                  <rect x="10" y="8" width="20" height="16" rx="2" fill="currentColor" opacity="0.25"/>
-                  <polygon points="30,12 42,6 42,30 30,24" fill="currentColor" opacity="0.15"/>
-                  <line x1="22" y1="24" x2="14" y2="36"/><line x1="22" y1="24" x2="22" y2="36"/><line x1="22" y1="24" x2="30" y2="36"/>
-                </svg>
-                Viewpoint
-              </button>
-              <button class="pill active" data-val="push" onclick="selectLLMAction('push')">
-                <svg viewBox="0 0 80 40" width="40" height="20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px">
-                  <line x1="15" y1="12" x2="55" y2="12"/><polyline points="48,7 58,12 48,17"/>
-                  <rect x="15" y="22" width="40" height="8" rx="1.5" fill="currentColor" opacity="0.25"/>
-                </svg>
-                Push
-              </button>
-            </div>
+        <!-- LLM ACTION SELECTOR (LLM mode only) -->
+        <div class="hidden" id="llm-action-selector">
+          <div class="llm-action-icon" id="llm-action-icon">
+            <svg viewBox="0 0 80 80"><use href="/static/icons.svg#icon-camera"/></svg>
+          </div>
+          <div class="llm-action-labels">
+            <button class="llm-action-label active" data-action="viewpoint" onclick="selectLLMAction('viewpoint')">Viewpoint</button>
+            <button class="llm-action-label" data-action="push" onclick="selectLLMAction('push')">Push</button>
           </div>
         </div>
 
@@ -156,6 +143,10 @@
 
         <!-- PUSH (push phase) -->
         <div class="card hidden" id="panel-push">
+          <div class="card-illustration">
+            <svg viewBox="0 0 80 80"><use href="/static/icons.svg#icon-push"/></svg>
+          </div>
+          <div class="card-title">Push</div>
           <div class="form-grid">
             <div class="form-field full">
               <label class="form-label">Layer</label>
@@ -208,11 +199,7 @@
         <!-- PLACE BACK (place_back phase) -->
         <div class="card hidden" id="panel-place">
           <div class="card-illustration">
-            <svg viewBox="0 0 80 80" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-              <rect x="15" y="28" width="50" height="10" rx="1.5" fill="currentColor" opacity="0.25"/>
-              <line x1="40" y1="44" x2="40" y2="62"/>
-              <polyline points="34,56 40,64 46,56"/>
-            </svg>
+            <svg viewBox="0 0 80 80"><use href="/static/icons.svg#icon-place"/></svg>
           </div>
           <div class="card-title">Place Back</div>
           <div class="form-grid">
@@ -330,9 +317,14 @@
     btn.classList.add('active');
 
     const isLLM = mode === 'llm';
-    document.getElementById('panel-action-type').classList.toggle('hidden', !isLLM);
-    document.getElementById('viewport-hint').textContent = isLLM ? 'Locked' : 'Drag to orbit · Scroll to zoom';
-    if (!isLLM) {
+    document.getElementById('llm-action-selector').classList.toggle('hidden', !isLLM);
+    document.getElementById('viewport-hint').textContent = (isLLM && !sandboxBusy) ? 'Locked' : 'Drag to orbit · Scroll to zoom';
+    document.querySelectorAll('.card-illustration, .card-title').forEach(el => {
+      el.classList.toggle('hidden', isLLM);
+    });
+    if (isLLM) {
+      selectLLMAction(llmAction);
+    } else {
       document.getElementById('panel-camera').classList.add('hidden');
     }
 
@@ -353,12 +345,23 @@
   }
 
   function fetchPybulletFrame() {
+    const payload = {
+      direction: llmCamera.direction,
+      elevation_layer: llmCamera.elevation_layer,
+      distance: llmCamera.distance,
+    };
+    if (llmCamera.target_layer) {
+      payload.target_block = { layer: llmCamera.target_layer, color: llmCamera.target_color };
+    }
     fetch('/api/capture', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(llmCamera),
+      body: JSON.stringify(payload),
     })
-    .then(r => r.ok ? r.blob() : null)
+    .then(r => {
+      if (!r.ok) { console.error('capture failed', r.status); return null; }
+      return r.blob();
+    })
     .then(blob => {
       if (blob) {
         const img = document.getElementById('pybullet-frame');
@@ -367,17 +370,24 @@
         img.src = url;
       }
     })
-    .catch(() => {});
+    .catch(err => console.error('capture error', err));
   }
 
   // ── LLM ACTION SELECTOR ──
-  let llmAction = 'push';
+  let llmAction = 'viewpoint';
 
   function selectLLMAction(action) {
     llmAction = action;
-    document.querySelectorAll('#action-type-pills .pill').forEach(p => {
-      p.classList.toggle('active', p.dataset.val === action);
+    document.querySelectorAll('.llm-action-label').forEach(l => {
+      l.classList.toggle('active', l.dataset.action === action);
     });
+    const iconEl = document.querySelector('#llm-action-icon use');
+    if (iconEl) {
+      const phase = typeof scene !== 'undefined' && scene?.phase;
+      let icon = action === 'viewpoint' ? 'icon-camera' : 'icon-push';
+      if (action === 'push' && phase === 'place_back') icon = 'icon-place';
+      iconEl.setAttribute('href', '/static/icons.svg#' + icon);
+    }
     document.getElementById('panel-camera').classList.toggle('hidden', action !== 'viewpoint');
     if (typeof updateActionControls === 'function') updateActionControls();
   }
