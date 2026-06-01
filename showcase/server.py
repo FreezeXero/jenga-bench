@@ -193,13 +193,13 @@ class PreviewState:
 
     def _ensure_simulation(self) -> None:
         if self._simulation is None:
-            self._simulation = JengaSimulation()
+            self._simulation = JengaSimulation(settings=_flat_to_settings(_current_settings))
             self._simulation.reset(seed=self._seed)
 
     def _reset_locked(self, seed: int) -> None:
         self.close()
         self._seed = seed
-        self._simulation = JengaSimulation()
+        self._simulation = JengaSimulation(settings=_flat_to_settings(_current_settings))
         self._simulation.reset(seed=seed)
         self._camera = DEFAULT_CAMERA
         self._terminated = False

@@ -53,7 +53,7 @@ class PhysicsSettings:
     max_tilt_degrees: float = 20.0
     push_force_multiplier: float = 1.5
     intensities: tuple[tuple[str, float], ...] = (
-        ("Gentle", 0.05),
+        ("Gentle", 0.005),
         ("Firm", 0.15),
         ("Hard", 0.40),
     )

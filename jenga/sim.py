@@ -23,7 +23,7 @@ from jenga.tower import (
     Orientation,
     build_prebuilt_tower,
 )
-from jenga.settings import DEFAULT_SETTINGS
+from jenga.settings import DEFAULT_SETTINGS, JengaSettings
 
 logger = logging.getLogger(__name__)
 
@@ -107,8 +107,16 @@ class PlaceResult:
 class JengaSimulation:
     """Owns one PyBullet DIRECT client and its dynamic tower."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: JengaSettings = DEFAULT_SETTINGS) -> None:
         self.client_id = bullet.connect(bullet.DIRECT)
+        self.settings = settings
+        self._physics = settings.physics
+        self._geometry = settings.geometry
+        self._ramp_steps = round(self._physics.ramp_duration_seconds / self._physics.timestep)
+        self._velocity_caps = dict(self._physics.intensities)
+        self._base_center_z = -self._geometry.base_size[2] / 2
+        self._floor_z = -self._geometry.base_size[2]
+        self._floor_center_z = self._floor_z - self._geometry.floor_size[2] / 2
         self.blocks: tuple[BlockBody, ...] = ()
         self.base_body_id: int | None = None
         self.floor_body_id: int | None = None
@@ -159,7 +167,7 @@ class JengaSimulation:
 
     def reset(self, seed: int | None) -> None:
         self._clear_world()
-        self._build_world(build_prebuilt_tower(seed))
+        self._build_world(build_prebuilt_tower(seed, settings=self.settings))
         if not self._settle():
             raise TowerStabilityError("prebuilt tower failed to settle")
         self._zero_velocities()
@@ -219,20 +227,20 @@ class JengaSimulation:
         direction = self._force_direction_aligned(target, request.face)
         contact = self._world_contact_point(target, request)
         load = self._get_load(target.body_id)
-        breakaway = load * LATERAL_FRICTION
-        peak_force = breakaway * PUSH_FORCE_MULTIPLIER
-        velocity_cap = VELOCITY_CAPS[request.intensity]
+        breakaway = load * self._physics.lateral_friction
+        peak_force = breakaway * self._physics.push_force_multiplier
+        velocity_cap = self._velocity_caps[request.intensity]
         logger.debug("push load=%.3fN breakaway=%.3fN peak=%.3fN cap=%.2fm/s", load, breakaway, peak_force, velocity_cap)
         contact_snapshot = self._snapshot_vertical_contacts(target.body_id)
         collapse_lost_steps: dict[int, int] = {}
         extracted = False
-        for ramp_step in range(1, RAMP_STEPS + 1):
+        for ramp_step in range(1, self._ramp_steps + 1):
             speed = sum(v ** 2 for v in bullet.getBaseVelocity(target.body_id, physicsClientId=self.client_id)[0]) ** 0.5
             if speed >= velocity_cap:
                 bullet.stepSimulation(physicsClientId=self.client_id)
                 simulated_steps += 1
             else:
-                multiplier = math.sin(math.pi * ramp_step / (RAMP_STEPS + 1))
+                multiplier = math.sin(math.pi * ramp_step / (self._ramp_steps + 1))
                 force = tuple(value * peak_force * multiplier for value in direction)
                 bullet.applyExternalForce(
                     target.body_id,
@@ -244,9 +252,9 @@ class JengaSimulation:
                 )
                 bullet.stepSimulation(physicsClientId=self.client_id)
                 simulated_steps += 1
-            if ramp_step % FRAME_SAMPLE_STEPS == 0:
+            if ramp_step % self._physics.frame_sample_steps == 0:
                 sequence += 1
-                frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="ramp"))
+                frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * self._physics.timestep, phase="ramp"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target)
             if self._check_collapse(contact_snapshot, collapse_lost_steps, target.body_id):
@@ -255,7 +263,7 @@ class JengaSimulation:
                         frames, sequence, simulated_steps, frame_callback
                     )
                 return self._finish_push(
-                    "collapse", target, frames, sequence, simulated_steps, 0, RAMP_STEPS, frame_callback
+                    "collapse", target, frames, sequence, simulated_steps, 0, self._ramp_steps, frame_callback
                 )
 
         settled, extracted, sequence, simulated_steps, settle_steps = self._settle_with_frames(
@@ -285,7 +293,7 @@ class JengaSimulation:
                 frames, sequence, simulated_steps, frame_callback
             )
         return self._finish_push(
-            outcome, target, frames, sequence, simulated_steps, settle_steps, RAMP_STEPS, frame_callback
+            outcome, target, frames, sequence, simulated_steps, settle_steps, self._ramp_steps, frame_callback
         )
 
     def _finish_push(
@@ -296,7 +304,7 @@ class JengaSimulation:
         sequence: int,
         simulated_steps: int,
         settle_steps: int,
-        ramp_steps: int = RAMP_STEPS,
+        ramp_steps: int,
         frame_callback: Callable[[dict[str, Any]], None] | None = None,
     ) -> PushResult:
         if outcome == "extracted":
@@ -304,7 +312,7 @@ class JengaSimulation:
             self.held_block = target
         self._zero_velocities()
         final_sequence = sequence + 1
-        final = self.frame(sequence=final_sequence, sim_time=simulated_steps * TIMESTEP, phase=outcome)
+        final = self.frame(sequence=final_sequence, sim_time=simulated_steps * self._physics.timestep, phase=outcome)
         frames.append(final)
         self._emit_frame(final, frame_callback)
         if outcome == "extracted":
@@ -314,7 +322,7 @@ class JengaSimulation:
             outcome=outcome,
             frames=self.last_frames,
             target_id=target.spec.internal_id,
-            ramp_steps=RAMP_STEPS,
+            ramp_steps=ramp_steps,
             settle_steps=settle_steps,
         )
 
@@ -345,7 +353,7 @@ class JengaSimulation:
             raise PushValidationError(f"face must be one of: {valid}")
         if request.contact not in CONTACTS:
             raise PushValidationError("contact must be center, left, or right")
-        if request.intensity not in VELOCITY_CAPS:
+        if request.intensity not in self._velocity_caps:
             raise PushValidationError("intensity must be Gentle, Firm, or Hard")
         return target
 
@@ -364,10 +372,10 @@ class JengaSimulation:
         anchor_x, anchor_y = self._placement_row_anchor()
         top_z = self._placement_row_surface()
         if orientation == Orientation.NORTH_SOUTH:
-            position = (anchor_x + slot.offset, anchor_y, top_z + BLOCK_HEIGHT / 2 + PLACEMENT_DROP_HEIGHT)
+            position = (anchor_x + slot.offset, anchor_y, top_z + self._geometry.block_height / 2 + self._physics.placement_drop_height)
             base_yaw = 0.0
         else:
-            position = (anchor_x, anchor_y + slot.offset, top_z + BLOCK_HEIGHT / 2 + PLACEMENT_DROP_HEIGHT)
+            position = (anchor_x, anchor_y + slot.offset, top_z + self._geometry.block_height / 2 + self._physics.placement_drop_height)
             base_yaw = 0.0
         spec = replace(
             target.spec,
@@ -394,16 +402,16 @@ class JengaSimulation:
         collapse_lost_steps: dict[int, int] = {}
         settled = False
         stable_steps = 0
-        timeout_steps = round(SETTLE_TIMEOUT_SECONDS / TIMESTEP)
+        timeout_steps = round(self._physics.settle_timeout_seconds / self._physics.timestep)
         settle_steps = timeout_steps
         for settle_step in range(1, timeout_steps + 1):
             bullet.stepSimulation(physicsClientId=self.client_id)
             simulated_steps += 1
-            if settle_step % FRAME_SAMPLE_STEPS == 0:
+            if settle_step % self._physics.frame_sample_steps == 0:
                 sequence += 1
                 frame = self.frame(
                     sequence=sequence,
-                    sim_time=simulated_steps * TIMESTEP,
+                    sim_time=simulated_steps * self._physics.timestep,
                     phase="place-settle",
                 )
                 frames.append(frame)
@@ -412,7 +420,7 @@ class JengaSimulation:
                 break
             if self._all_blocks_below_velocity_thresholds():
                 stable_steps += 1
-                if stable_steps >= SETTLE_STABLE_STEPS:
+                if stable_steps >= self._physics.settle_stable_steps:
                     settled = True
                     settle_steps = settle_step
                     break
@@ -430,7 +438,7 @@ class JengaSimulation:
         self._zero_velocities()
         final = self.frame(
             sequence=sequence + 1,
-            sim_time=simulated_steps * TIMESTEP,
+            sim_time=simulated_steps * self._physics.timestep,
             phase=outcome,
         )
         frames.append(final)
@@ -475,7 +483,7 @@ class JengaSimulation:
         if self.placement_surface_z is None:
             self.placement_surface_z = max(
                 bullet.getBasePositionAndOrientation(block.body_id, physicsClientId=self.client_id)[0][2]
-                + BLOCK_HEIGHT / 2
+                + self._geometry.block_height / 2
                 for block in self.blocks
                 if block.body_id not in self.retired_body_ids
             )
@@ -593,20 +601,20 @@ class JengaSimulation:
         frame_callback: Callable[[dict[str, Any]], None] | None,
     ) -> tuple[bool, bool, int, int, int]:
         stable_steps = 0
-        timeout_steps = round(SETTLE_TIMEOUT_SECONDS / TIMESTEP)
+        timeout_steps = round(self._physics.settle_timeout_seconds / self._physics.timestep)
         for settle_step in range(1, timeout_steps + 1):
             bullet.stepSimulation(physicsClientId=self.client_id)
             simulated_steps += 1
-            if settle_step % FRAME_SAMPLE_STEPS == 0:
+            if settle_step % self._physics.frame_sample_steps == 0:
                 sequence += 1
-                frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * TIMESTEP, phase="settle"))
+                frames.append(self.frame(sequence=sequence, sim_time=simulated_steps * self._physics.timestep, phase="settle"))
                 self._emit_frame(frames[-1], frame_callback)
             extracted = extracted or self._is_extracted(target)
             if self._check_collapse(contact_snapshot, collapse_lost_steps, target.body_id):
                 return False, extracted, sequence, simulated_steps, settle_step
             if self._all_blocks_below_velocity_thresholds(ignored_body_id=target.body_id if extracted else None):
                 stable_steps += 1
-                if stable_steps >= SETTLE_STABLE_STEPS:
+                if stable_steps >= self._physics.settle_stable_steps:
                     return True, extracted, sequence, simulated_steps, settle_step
             else:
                 stable_steps = 0
@@ -620,26 +628,26 @@ class JengaSimulation:
         frame_callback: Callable[[dict[str, Any]], None] | None,
     ) -> tuple[int, int]:
         stable_steps = 0
-        timeout_steps = round(VIEWER_COLLAPSE_TAIL_TIMEOUT_SECONDS / TIMESTEP)
+        timeout_steps = round(self._physics.viewer_collapse_tail_timeout_seconds / self._physics.timestep)
         for tail_step in range(1, timeout_steps + 1):
             bullet.stepSimulation(physicsClientId=self.client_id)
             simulated_steps += 1
-            if tail_step % FRAME_SAMPLE_STEPS == 0:
+            if tail_step % self._physics.frame_sample_steps == 0:
                 sequence += 1
                 frames.append(
                     self.frame(
                         sequence=sequence,
-                        sim_time=simulated_steps * TIMESTEP,
+                        sim_time=simulated_steps * self._physics.timestep,
                         phase="collapse",
                     )
                 )
                 self._emit_frame(frames[-1], frame_callback)
             if self._all_blocks_below_velocity_thresholds(
-                linear_threshold=VIEWER_COLLAPSE_LINEAR_VELOCITY_THRESHOLD,
-                angular_threshold=VIEWER_COLLAPSE_ANGULAR_VELOCITY_THRESHOLD,
+                linear_threshold=self._physics.viewer_collapse_linear_velocity_threshold,
+                angular_threshold=self._physics.viewer_collapse_angular_velocity_threshold,
             ):
                 stable_steps += 1
-                if stable_steps >= VIEWER_COLLAPSE_STABLE_STEPS:
+                if stable_steps >= self._physics.viewer_collapse_stable_steps:
                     break
             else:
                 stable_steps = 0
@@ -653,11 +661,11 @@ class JengaSimulation:
             frame_callback(frame)
 
     def _configure(self) -> None:
-        bullet.setGravity(*PHYSICS.gravity, physicsClientId=self.client_id)
-        bullet.setTimeStep(TIMESTEP, physicsClientId=self.client_id)
+        bullet.setGravity(*self._physics.gravity, physicsClientId=self.client_id)
+        bullet.setTimeStep(self._physics.timestep, physicsClientId=self.client_id)
         bullet.setPhysicsEngineParameter(
-            fixedTimeStep=TIMESTEP,
-            numSolverIterations=SOLVER_ITERATIONS,
+            fixedTimeStep=self._physics.timestep,
+            numSolverIterations=self._physics.solver_iterations,
             deterministicOverlappingPairs=1,
             physicsClientId=self.client_id,
         )
@@ -677,7 +685,7 @@ class JengaSimulation:
         self.placement_surface_z = None
 
     def _build_world(self, specs: tuple[BlockSpec, ...]) -> None:
-        floor_half = tuple(value / 2 for value in FLOOR_SIZE)
+        floor_half = tuple(value / 2 for value in self._geometry.floor_size)
         floor_shape = bullet.createCollisionShape(
             bullet.GEOM_BOX, halfExtents=floor_half, physicsClientId=self.client_id
         )
@@ -691,15 +699,15 @@ class JengaSimulation:
             baseMass=0.0,
             baseCollisionShapeIndex=floor_shape,
             baseVisualShapeIndex=floor_visual,
-            basePosition=(0.0, 0.0, FLOOR_CENTER_Z),
+            basePosition=(0.0, 0.0, self._floor_center_z),
             physicsClientId=self.client_id,
         )
         bullet.changeDynamics(
             self.floor_body_id, -1,
-            restitution=PHYSICS.floor_restitution,
+            restitution=self._physics.floor_restitution,
             physicsClientId=self.client_id,
         )
-        base_half = tuple(value / 2 for value in BASE_SIZE)
+        base_half = tuple(value / 2 for value in self._geometry.base_size)
         base_collision = bullet.createCollisionShape(
             bullet.GEOM_BOX, halfExtents=base_half, physicsClientId=self.client_id
         )
@@ -713,14 +721,14 @@ class JengaSimulation:
             baseMass=0.0,
             baseCollisionShapeIndex=base_collision,
             baseVisualShapeIndex=base_visual,
-            basePosition=(0.0, 0.0, BASE_CENTER_Z),
+            basePosition=(0.0, 0.0, self._base_center_z),
             physicsClientId=self.client_id,
         )
         bullet.changeDynamics(
             self.base_body_id,
             -1,
-            lateralFriction=PHYSICS.lateral_friction,
-            restitution=PHYSICS.floor_restitution,
+            lateralFriction=self._physics.lateral_friction,
+            restitution=self._physics.floor_restitution,
             physicsClientId=self.client_id,
         )
         bodies = []
@@ -738,7 +746,7 @@ class JengaSimulation:
             bullet.GEOM_BOX, halfExtents=half_extents, rgbaColor=spec.rgba, physicsClientId=self.client_id
         )
         body_id = bullet.createMultiBody(
-            baseMass=BLOCK_MASS,
+            baseMass=self._geometry.block_mass,
             baseCollisionShapeIndex=collision,
             baseVisualShapeIndex=visual,
             basePosition=spec.position,
@@ -748,24 +756,24 @@ class JengaSimulation:
         bullet.changeDynamics(
             body_id,
             -1,
-            lateralFriction=PHYSICS.lateral_friction,
-            rollingFriction=PHYSICS.rolling_friction,
-            spinningFriction=PHYSICS.spinning_friction,
-            linearDamping=PHYSICS.linear_damping,
-            angularDamping=PHYSICS.angular_damping,
-            restitution=PHYSICS.restitution,
+            lateralFriction=self._physics.lateral_friction,
+            rollingFriction=self._physics.rolling_friction,
+            spinningFriction=self._physics.spinning_friction,
+            linearDamping=self._physics.linear_damping,
+            angularDamping=self._physics.angular_damping,
+            restitution=self._physics.restitution,
             physicsClientId=self.client_id,
         )
         return BlockBody(spec=spec, body_id=body_id)
 
     def _settle(self) -> bool:
         stable_steps = 0
-        timeout_steps = round(SETTLE_TIMEOUT_SECONDS / TIMESTEP)
+        timeout_steps = round(self._physics.settle_timeout_seconds / self._physics.timestep)
         for step in range(1, timeout_steps + 1):
             bullet.stepSimulation(physicsClientId=self.client_id)
             if self._all_blocks_below_velocity_thresholds():
                 stable_steps += 1
-                if stable_steps >= SETTLE_STABLE_STEPS:
+                if stable_steps >= self._physics.settle_stable_steps:
                     self.settle_steps = step
                     return True
             else:
@@ -788,9 +796,13 @@ class JengaSimulation:
         self,
         *,
         ignored_body_id: int | None = None,
-        linear_threshold: float = LINEAR_VELOCITY_THRESHOLD,
-        angular_threshold: float = ANGULAR_VELOCITY_THRESHOLD,
+        linear_threshold: float | None = None,
+        angular_threshold: float | None = None,
     ) -> bool:
+        if linear_threshold is None:
+            linear_threshold = self._physics.linear_velocity_threshold
+        if angular_threshold is None:
+            angular_threshold = self._physics.angular_velocity_threshold
         for block in self.blocks:
             if block.body_id == ignored_body_id or block.body_id in self.retired_body_ids:
                 continue

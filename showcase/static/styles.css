@@ -575,6 +575,8 @@ body {
 .pill.active[data-val="Red"]   { background: oklch(48.4% 0.120 15.2);  border-color: oklch(48.4% 0.120 15.2); }
 
 .card-actions { display: flex; flex-direction: column; gap: 6px; }
+#panel-push { border-bottom: none; }
+.sidebar-footer { margin-top: auto; padding: 12px 18px; border-top: 1px solid var(--surface-higher); }
 .form-error { min-height: 14px; font-size: 11px; color: var(--fg-red); font-weight: 600; }
 
 /* ════════════════════════════

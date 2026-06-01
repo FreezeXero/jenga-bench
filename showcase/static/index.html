@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=17">
+  <link rel="stylesheet" href="/static/styles.css?v=18">
 </head>
 <body>
 
@@ -241,6 +241,10 @@
           </div>
           <input id="tower-seed" type="hidden" value="0">
         </div>
+
+        <div class="sidebar-footer">
+          <button class="btn btn-ghost full-w" onclick="document.getElementById('reset-tower').click()">Reset Tower</button>
+        </div>
       </aside>
     </div>
   </div>
@@ -375,9 +379,9 @@
               <div class="sf-row"><label class="form-label">Lateral friction</label><input class="form-input sf-input" id="s-lateral_friction" type="number" step="0.01" min="0" max="2"></div>
               <div class="sf-row"><label class="form-label">Restitution (bounciness)</label><input class="form-input sf-input" id="s-restitution" type="number" step="0.01" min="0" max="1"></div>
               <div class="sf-row"><label class="form-label">Push force multiplier</label><input class="form-input sf-input" id="s-push_force_multiplier" type="number" step="0.1" min="0.1" max="10"></div>
-              <div class="sf-row"><label class="form-label">Gentle force (N)</label><input class="form-input sf-input" id="s-intensity_gentle" type="number" step="0.01" min="0.01" max="2"></div>
-              <div class="sf-row"><label class="form-label">Firm force (N)</label><input class="form-input sf-input" id="s-intensity_firm" type="number" step="0.01" min="0.01" max="2"></div>
-              <div class="sf-row"><label class="form-label">Hard force (N)</label><input class="form-input sf-input" id="s-intensity_hard" type="number" step="0.01" min="0.01" max="2"></div>
+              <div class="sf-row"><label class="form-label">Gentle velocity cap (m/s)</label><input class="form-input sf-input" id="s-intensity_gentle" type="number" step="0.01" min="0.01" max="2"></div>
+              <div class="sf-row"><label class="form-label">Firm velocity cap (m/s)</label><input class="form-input sf-input" id="s-intensity_firm" type="number" step="0.01" min="0.01" max="2"></div>
+              <div class="sf-row"><label class="form-label">Hard velocity cap (m/s)</label><input class="form-input sf-input" id="s-intensity_hard" type="number" step="0.01" min="0.01" max="2"></div>
               <div class="sf-row"><label class="form-label">Settle timeout (s)</label><input class="form-input sf-input" id="s-settle_timeout_seconds" type="number" step="0.5" min="1" max="30"></div>
             </div>
           </div>
