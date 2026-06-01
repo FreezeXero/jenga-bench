@@ -586,8 +586,19 @@ function bindPositions(prog) {
   gl.enableVertexAttribArray(pos);
 }
 
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  const width = Math.round(rect.width * devicePixelRatio) || 512;
+  const height = Math.round(rect.height * devicePixelRatio) || 512;
+  if (canvas.width === width && canvas.height === height) return false;
+  canvas.width = width;
+  canvas.height = height;
+  return true;
+}
+
 function renderScene() {
   if (!scene) return;
+  resizeCanvas();
   const lm = lightMatrix();
   const yaw = camera.azimuth * Math.PI / 180;
   const pitch = camera.pitch * Math.PI / 180;
@@ -650,6 +661,10 @@ function renderScene() {
     gl.cullFace(gl.BACK);
   }
 }
+
+new ResizeObserver(() => {
+  if (resizeCanvas() && scene) renderScene();
+}).observe(viewport);
 
 function applyScene(nextScene, { preserveCamera = false } = {}) {
   scene = nextScene;
