@@ -2,7 +2,7 @@
   "id": "jenga-bench",
   "adapter": "adapter.py",
   "name": "JengaBench",
-  "description": "A deterministic visual benchmark for spatial reasoning and physical planning in an unstable Jenga tower.",
+  "description": "Evaluates visual-spatial reasoning and strategic decision-making in a deterministic 3D Jenga environment.",
   "tags": ["tier1"],
 
   "binding_vow": {
