@@ -520,7 +520,7 @@ function appendBox(box, positions, colors, normals) {
     [0, 1, 5, 4], [1, 2, 6, 5],
     [2, 3, 7, 6], [3, 0, 4, 7],
   ];
-  const rgb = box.color.map((channel) => channel / 255);
+  const rgb = (box._colorOverride || box.color).map((channel) => channel / 255);
   const tint = box._tint || null;
   const finalRgb = tint
     ? rgb.map((c, i) => Math.min(1, c * (1 - tint.strength) + tint.color[i] * tint.strength))
@@ -551,7 +551,15 @@ function loadGeometry() {
   const edgePositions = [];
   const edgeColors = [];
   const edgeNormals = [];
+  const isDark = document.documentElement.getAttribute('data-theme') !== 'light';
   for (const box of boxes) {
+    if (box === scene.floor) {
+      box._colorOverride = isDark ? [72, 55, 38] : [195, 175, 145];
+    } else if (box === scene.base) {
+      box._colorOverride = isDark ? [30, 24, 18] : [160, 140, 115];
+    } else {
+      box._colorOverride = null;
+    }
     appendBox(box, positions, colors, normals);
     if (isHuman && (box.id === selectedBlockId || box.id === hoveredBlockId)) {
       box._edgeColor = EDGE_COLOR;
@@ -610,7 +618,8 @@ function renderScene() {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
   gl.viewport(0, 0, canvas.width, canvas.height);
-  gl.clearColor(1, 1, 1, 1);
+  const isDarkMode = document.documentElement.getAttribute('data-theme') !== 'light';
+  isDarkMode ? gl.clearColor(0.08, 0.06, 0.05, 1) : gl.clearColor(0.94, 0.91, 0.85, 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.useProgram(mainProgram);
   gl.uniformMatrix4fv(gl.getUniformLocation(mainProgram, "viewProjection"), false, matrix);

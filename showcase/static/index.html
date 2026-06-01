@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=16">
+  <link rel="stylesheet" href="/static/styles.css?v=17">
 </head>
 <body>
 
@@ -28,6 +28,7 @@
     <nav class="topbar-nav">
       <button class="nav-tab active" onclick="showTab('demo', this)">Demo</button>
       <button class="nav-tab" onclick="showTab('benchmark', this)">Benchmark</button>
+      <button class="nav-tab" onclick="showTab('settings', this)">Settings</button>
     </nav>
     <div class="topbar-right">
       <button class="theme-btn" id="theme-toggle" title="Toggle theme">
@@ -75,7 +76,7 @@
           <button class="sidebar-tab" data-mode="llm" onclick="switchMode('llm', this)">LLM View</button>
         </div>
 
-        <!-- SIM INFO (during animation, both modes) -->
+        <!-- SIM INFO -->
         <div class="card hidden" id="panel-sim">
           <div class="card-header"><span class="chip">Simulation</span></div>
           <div class="cam-row">
@@ -87,7 +88,7 @@
           </div>
         </div>
 
-        <!-- LLM ACTION SELECTOR (LLM mode only) -->
+        <!-- LLM ACTION SELECTOR -->
         <div class="hidden" id="llm-action-selector">
           <div class="llm-action-icon" id="llm-action-icon">
             <svg viewBox="0 0 80 80"><use href="/static/icons.svg#icon-camera"/></svg>
@@ -151,7 +152,7 @@
           </div>
         </div>
 
-        <!-- PUSH (push phase) -->
+        <!-- PUSH -->
         <div class="card hidden" id="panel-push">
           <div class="card-illustration">
             <svg viewBox="0 0 80 80"><use href="/static/icons.svg#icon-push"/></svg>
@@ -209,7 +210,7 @@
           <p id="sandbox-error" class="form-error"></p>
         </div>
 
-        <!-- PLACE BACK (place_back phase) -->
+        <!-- PLACE BACK -->
         <div class="card hidden" id="panel-place">
           <div class="card-illustration">
             <svg viewBox="0 0 80 80"><use href="/static/icons.svg#icon-place"/></svg>
@@ -233,7 +234,7 @@
           </div>
         </div>
 
-        <!-- RESET (collapse) -->
+        <!-- RESET -->
         <div class="card hidden" id="panel-reset">
           <div class="card-actions">
             <button id="reset-tower" class="btn btn-accent full-w">New Game</button>
@@ -259,9 +260,10 @@
         <div class="model-tabs" id="model-tabs"></div>
         <div class="leaderboard" id="leaderboard"></div>
 
+        <!-- PER-STEP REPLAY -->
         <div class="episode-section">
           <div class="episode-header">
-            <span class="chip">Episode Replay</span>
+            <span class="chip">Step Replay</span>
             <div class="replay-nav">
               <button class="btn btn-sm btn-outline" onclick="prevStep()">← Prev</button>
               <span class="replay-counter mono" id="replay-counter">— / —</span>
@@ -270,7 +272,40 @@
           </div>
           <div class="step-timeline" id="step-timeline"></div>
           <div class="step-detail" id="step-detail">
-            <div class="empty-state">Load demo data or a results file to see the replay</div>
+            <div class="empty-state">Load demo data to see the replay</div>
+          </div>
+        </div>
+
+        <!-- FULL GAME REPLAY -->
+        <div class="full-replay-section">
+          <div class="full-replay-header">
+            <span class="chip blue">Full Game Replay</span>
+            <div class="replay-nav">
+              <button class="btn btn-sm btn-outline" id="full-replay-play" onclick="toggleFullReplay()">▶ Play</button>
+              <span class="replay-step-info" id="full-replay-counter">— / —</span>
+              <select class="replay-speed" id="replay-speed-select" onchange="setReplaySpeed(this.value)">
+                <option value="1000">1×</option>
+                <option value="500">2×</option>
+                <option value="250">4×</option>
+              </select>
+            </div>
+          </div>
+          <div class="full-replay-body">
+            <div class="full-replay-viewer">
+              <div class="full-replay-frame" id="full-replay-frame-main">
+                <div class="full-replay-no-frame">No frame data</div>
+              </div>
+              <div id="full-replay-info" style="display:flex;flex-direction:column;gap:12px;justify-content:center;">
+                <div class="empty-state">Load demo data to start replay</div>
+              </div>
+            </div>
+            <div class="replay-controls">
+              <button class="btn btn-sm btn-ghost" onclick="fullReplayStep(-1)">←</button>
+              <div class="replay-progress" onclick="scrubReplay(event)">
+                <div class="replay-progress-fill" id="replay-progress-fill" style="width:0%"></div>
+              </div>
+              <button class="btn btn-sm btn-ghost" onclick="fullReplayStep(1)">→</button>
+            </div>
           </div>
         </div>
       </div>
@@ -296,21 +331,98 @@
     </div>
   </div>
 
+  <!-- ═══ SETTINGS ═══ -->
+  <div class="tab-content" id="tab-settings">
+    <div class="settings-layout">
+      <div class="settings-main">
+
+        <div class="settings-header">
+          <div class="results-title">Simulation Settings</div>
+          <div class="results-sub">Configure tower geometry, physics, and rendering. Changes apply on reset.</div>
+        </div>
+
+        <div class="settings-grid">
+
+          <!-- TOWER GEOMETRY -->
+          <div class="settings-section">
+            <div class="settings-section-title"><span class="chip">Tower Geometry</span></div>
+            <div class="settings-fields">
+              <div class="sf-row"><label class="form-label">Block length (m)</label><input class="form-input sf-input" id="s-block_length" type="number" step="0.001" min="0.01" max="0.3"></div>
+              <div class="sf-row"><label class="form-label">Block width (m)</label><input class="form-input sf-input" id="s-block_width" type="number" step="0.001" min="0.005" max="0.1"></div>
+              <div class="sf-row"><label class="form-label">Block height (m)</label><input class="form-input sf-input" id="s-block_height" type="number" step="0.001" min="0.005" max="0.05"></div>
+              <div class="sf-row"><label class="form-label">Block mass (kg)</label><input class="form-input sf-input" id="s-block_mass" type="number" step="0.01" min="0.01" max="1.0"></div>
+              <div class="sf-row"><label class="form-label">Layer count</label><input class="form-input sf-input" id="s-layer_count" type="number" step="1" min="3" max="30"></div>
+              <div class="sf-row"><label class="form-label">Blocks per layer</label><input class="form-input sf-input" id="s-blocks_per_layer" type="number" step="1" min="1" max="5"></div>
+            </div>
+          </div>
+
+          <!-- RANDOMNESS -->
+          <div class="settings-section">
+            <div class="settings-section-title"><span class="chip">Randomness</span></div>
+            <div class="settings-fields">
+              <div class="sf-row"><label class="form-label">Block offset (m)</label><input class="form-input sf-input" id="s-block_longitudinal_offset" type="number" step="0.0005" min="0" max="0.02"></div>
+              <div class="sf-row"><label class="form-label">Layer shift step (m)</label><input class="form-input sf-input" id="s-layer_shift_step" type="number" step="0.0001" min="0" max="0.01"></div>
+              <div class="sf-row"><label class="form-label">Layer yaw (°)</label><input class="form-input sf-input" id="s-layer_yaw_degrees" type="number" step="0.5" min="0" max="20"></div>
+              <div class="sf-row"><label class="form-label">Extra layer gap (m)</label><input class="form-input sf-input" id="s-extra_layer_gap" type="number" step="0.0001" min="0" max="0.005"></div>
+            </div>
+          </div>
+
+          <!-- PHYSICS -->
+          <div class="settings-section">
+            <div class="settings-section-title"><span class="chip">Physics</span></div>
+            <div class="settings-fields">
+              <div class="sf-row"><label class="form-label">Gravity Z (m/s²)</label><input class="form-input sf-input" id="s-gravity_z" type="number" step="0.1" min="-20" max="0"></div>
+              <div class="sf-row"><label class="form-label">Lateral friction</label><input class="form-input sf-input" id="s-lateral_friction" type="number" step="0.01" min="0" max="2"></div>
+              <div class="sf-row"><label class="form-label">Restitution (bounciness)</label><input class="form-input sf-input" id="s-restitution" type="number" step="0.01" min="0" max="1"></div>
+              <div class="sf-row"><label class="form-label">Push force multiplier</label><input class="form-input sf-input" id="s-push_force_multiplier" type="number" step="0.1" min="0.1" max="10"></div>
+              <div class="sf-row"><label class="form-label">Gentle force (N)</label><input class="form-input sf-input" id="s-intensity_gentle" type="number" step="0.01" min="0.01" max="2"></div>
+              <div class="sf-row"><label class="form-label">Firm force (N)</label><input class="form-input sf-input" id="s-intensity_firm" type="number" step="0.01" min="0.01" max="2"></div>
+              <div class="sf-row"><label class="form-label">Hard force (N)</label><input class="form-input sf-input" id="s-intensity_hard" type="number" step="0.01" min="0.01" max="2"></div>
+              <div class="sf-row"><label class="form-label">Settle timeout (s)</label><input class="form-input sf-input" id="s-settle_timeout_seconds" type="number" step="0.5" min="1" max="30"></div>
+            </div>
+          </div>
+
+          <!-- RENDERING -->
+          <div class="settings-section">
+            <div class="settings-section-title"><span class="chip blue">Rendering</span></div>
+            <div class="settings-fields">
+              <div class="sf-row"><label class="form-label">Image width (px)</label><input class="form-input sf-input" id="s-image_width" type="number" step="64" min="128" max="1024"></div>
+              <div class="sf-row"><label class="form-label">Image height (px)</label><input class="form-input sf-input" id="s-image_height" type="number" step="64" min="128" max="1024"></div>
+              <div class="sf-row"><label class="form-label">Ambient light</label><input class="form-input sf-input" id="s-light_ambient_coefficient" type="number" step="0.05" min="0" max="1"></div>
+              <div class="sf-row"><label class="form-label">Diffuse light</label><input class="form-input sf-input" id="s-light_diffuse_coefficient" type="number" step="0.05" min="0" max="1"></div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="settings-actions">
+          <button class="btn btn-ghost" onclick="restoreDefaults()">Restore defaults</button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span class="settings-status" id="settings-status"></span>
+            <button class="btn btn-accent" onclick="applySettings()">Apply &amp; Reset Tower</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
   <span id="status-dot" style="display:none"></span>
 
   <script src="/static/app.js?v=8"></script>
   <script>
-  // ── CANVAS BG FIX ──
-
   // ── THEME ──
   const root = document.documentElement;
   const savedTheme = localStorage.getItem('theme') || 'dark';
   if (savedTheme === 'light') root.setAttribute('data-theme', 'light');
   document.getElementById('theme-toggle').addEventListener('click', () => {
     const next = root.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    root.style.setProperty('--transition-override', 'none');
     root.setAttribute('data-theme', next);
     localStorage.setItem('theme', next);
+    if (typeof loadGeometry === 'function' && typeof scene !== 'undefined' && scene) loadGeometry();
     if (typeof renderScene === 'function') renderScene();
+    requestAnimationFrame(() => root.style.removeProperty('--transition-override'));
   });
 
   // ── TABS ──
@@ -319,6 +431,7 @@
     document.querySelectorAll('.nav-tab').forEach(el => el.classList.remove('active'));
     document.getElementById('tab-' + name).classList.add('active');
     btn.classList.add('active');
+    if (name === 'settings') loadSettings();
   }
 
   // ── MODE SWITCHING ──
@@ -350,7 +463,6 @@
       document.getElementById('panel-camera').classList.add('hidden');
     }
 
-    // Viewport: show static PNG in LLM idle, WebGL in Human
     const canvas = document.getElementById('frame');
     const img = document.getElementById('pybullet-frame');
     if (isLLM && !sandboxBusy) {
@@ -380,10 +492,7 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-    .then(r => {
-      if (!r.ok) { console.error('capture failed', r.status); return null; }
-      return r.blob();
-    })
+    .then(r => { if (!r.ok) return null; return r.blob(); })
     .then(blob => {
       if (blob) {
         const img = document.getElementById('pybullet-frame');
@@ -450,7 +559,6 @@
   const flashEl = document.getElementById('collapse-flash');
   new MutationObserver(() => {
     const val = outcomeEl.textContent.trim().toLowerCase();
-    outcomeEl.className = 'ss-val' + (val==='collapse'?' red':val==='extracted'?' green':'');
     if (val === 'collapse') {
       flashEl.classList.remove('active');
       void flashEl.offsetWidth;
@@ -458,7 +566,6 @@
     }
   }).observe(outcomeEl, { childList: true, characterData: true, subtree: true });
 
-  // mirror status dot
   new MutationObserver(() => {
     document.getElementById('vs-dot').classList.toggle('ok', document.getElementById('status-dot').classList.contains('ok'));
   }).observe(document.getElementById('status-dot'), { attributes: true });
@@ -491,10 +598,8 @@
 
   let currentSteps = [];
   let currentStepIdx = 0;
-  let resultsData = null;
 
   function renderResults(data) {
-    resultsData = data;
     document.getElementById('results-seed').textContent = data.seed ?? '—';
     const max = Math.max(...data.models.map(m => m.score));
     document.getElementById('stat-top').textContent = max.toFixed(1);
@@ -512,13 +617,13 @@
       btn.onclick = () => {
         document.querySelectorAll('.model-tab').forEach(t => t.classList.remove('active'));
         btn.classList.add('active');
-        renderLeaderboardForModel(data, i);
+        loadModelSteps(data, i);
       };
       tabs.appendChild(btn);
     });
 
     renderLeaderboard(data);
-    renderLeaderboardForModel(data, 0);
+    loadModelSteps(data, 0);
     document.getElementById('load-status').textContent = 'Data loaded';
   }
 
@@ -547,7 +652,7 @@
     });
   }
 
-  function renderLeaderboardForModel(data, idx) {
+  function loadModelSteps(data, idx) {
     currentSteps = data.models[idx]?.steps || [];
     currentStepIdx = 0;
     renderTimeline();
@@ -575,27 +680,186 @@
     const typeClass = s.type==='look'?'blue':s.terminated?'red':'';
     const rewardStr = s.reward>0?`+${s.reward.toFixed(1)}`:s.reward<0?s.reward.toFixed(1):'0';
     const rewardClass = s.reward>0?'green':s.reward<0?'red':'';
+    const frameHTML = s.frame
+      ? `<img src="${s.frame.startsWith('data:') ? s.frame : 'data:image/png;base64,'+s.frame}" alt="AI view">`
+      : `<div class="step-frame-placeholder">No frame</div>`;
+
     detail.innerHTML = `
-      <div class="step-detail-header">
-        <span class="chip ${typeClass}">${typeLabel}</span>
-        <span class="step-detail-title">Step ${s.step} of ${currentSteps.length}</span>
-        <span class="reward-tag ${rewardClass}">${rewardStr} pts</span>
+      <div class="step-detail-inner">
+        <div class="step-frame-col">
+          <div class="step-frame">${frameHTML}</div>
+          <div class="step-frame-label">AI view · step ${s.step}</div>
+        </div>
+        <div class="step-info-col">
+          <div class="step-detail-header">
+            <span class="chip ${typeClass}">${typeLabel}</span>
+            <span class="step-detail-title">Step ${s.step} of ${currentSteps.length}</span>
+            <span class="reward-tag ${rewardClass}">${rewardStr} pts</span>
+          </div>
+          <div class="step-reasoning">${s.reasoning}</div>
+          <pre class="step-action">${JSON.stringify(s.action, null, 2)}</pre>
+          ${s.terminated?'<div class="step-terminated">Episode terminated</div>':''}
+        </div>
       </div>
-      <div class="step-reasoning">${s.reasoning}</div>
-      <pre class="step-action">${JSON.stringify(s.action, null, 2)}</pre>
-      ${s.terminated?'<div class="step-terminated">Episode terminated</div>':''}
     `;
     renderTimeline();
+    updateFullReplay(idx);
   }
 
   function prevStep() { if (currentStepIdx > 0) showStep(currentStepIdx - 1); }
   function nextStep() { if (currentStepIdx < currentSteps.length - 1) showStep(currentStepIdx + 1); }
   function loadDemoResults() { renderResults(DEMO_DATA); }
 
+  // ── FULL GAME REPLAY ──
+  let fullReplayPlaying = false;
+  let fullReplayTimer = null;
+  let fullReplaySpeed = 1000;
+
+  function updateFullReplay(idx) {
+    const s = currentSteps[idx];
+    if (!s) return;
+    const total = currentSteps.length;
+    document.getElementById('full-replay-counter').textContent = `${idx+1} / ${total}`;
+    document.getElementById('replay-progress-fill').style.width = `${((idx+1)/total)*100}%`;
+
+    const frame = document.getElementById('full-replay-frame-main');
+    const info = document.getElementById('full-replay-info');
+
+    if (s.frame) {
+      const src = s.frame.startsWith('data:') ? s.frame : 'data:image/png;base64,'+s.frame;
+      frame.innerHTML = `<img src="${src}" alt="frame"><div class="full-replay-frame-label">Step ${s.step} · ${s.type.toUpperCase()}</div>`;
+    } else {
+      frame.innerHTML = `<div class="full-replay-no-frame">Step ${s.step} · ${s.type.toUpperCase()}</div>`;
+    }
+
+    const typeClass = s.type==='look'?'blue':s.terminated?'red':'';
+    const rewardStr = s.reward>0?`+${s.reward.toFixed(1)}`:s.reward<0?s.reward.toFixed(1):'0';
+    info.innerHTML = `
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+        <span class="chip ${typeClass}">${s.type.toUpperCase()}</span>
+        <span style="font-size:13px;font-weight:700;color:var(--text)">Step ${s.step}</span>
+        <span class="reward-tag ${s.reward<0?'red':s.reward>0?'green':''}">${rewardStr} pts</span>
+      </div>
+      <div class="step-reasoning" style="font-size:12px;">${s.reasoning}</div>
+      <pre class="step-action" style="font-size:10px;">${JSON.stringify(s.action, null, 2)}</pre>
+      ${s.terminated ? '<div class="step-terminated">Episode terminated</div>' : ''}
+    `;
+  }
+
+  function toggleFullReplay() {
+    fullReplayPlaying = !fullReplayPlaying;
+    document.getElementById('full-replay-play').textContent = fullReplayPlaying ? '⏸ Pause' : '▶ Play';
+    if (fullReplayPlaying) tickFullReplay();
+    else clearTimeout(fullReplayTimer);
+  }
+
+  function tickFullReplay() {
+    if (!fullReplayPlaying) return;
+    if (currentStepIdx < currentSteps.length - 1) {
+      showStep(currentStepIdx + 1);
+      fullReplayTimer = setTimeout(tickFullReplay, fullReplaySpeed);
+    } else {
+      fullReplayPlaying = false;
+      document.getElementById('full-replay-play').textContent = '▶ Play';
+    }
+  }
+
+  function fullReplayStep(dir) {
+    const next = currentStepIdx + dir;
+    if (next >= 0 && next < currentSteps.length) showStep(next);
+  }
+
+  function setReplaySpeed(val) { fullReplaySpeed = Number(val); }
+
+  function scrubReplay(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const pct = (e.clientX - rect.left) / rect.width;
+    const idx = Math.round(pct * (currentSteps.length - 1));
+    showStep(Math.max(0, Math.min(currentSteps.length - 1, idx)));
+  }
+
   fetch('/static/results.json')
     .then(r => r.ok ? r.json() : null)
     .then(data => { if (data) renderResults(data); })
     .catch(() => {});
+
+
+  // ── SETTINGS ──
+  const DEFAULTS = {
+    block_length: 0.075, block_width: 0.025, block_height: 0.015,
+    block_mass: 0.120, layer_count: 18, blocks_per_layer: 3,
+    block_longitudinal_offset: 0.0050, layer_shift_step: 0.0015,
+    layer_yaw_degrees: 4, extra_layer_gap: 0.0010,
+    gravity_z: -9.81, lateral_friction: 0.50, restitution: 0.7,
+    push_force_multiplier: 1.5, intensity_gentle: 0.05,
+    intensity_firm: 0.15, intensity_hard: 0.40,
+    settle_timeout_seconds: 10.0, image_width: 512, image_height: 512,
+    light_ambient_coefficient: 0.7, light_diffuse_coefficient: 0.3,
+  };
+
+  function populateSettings(vals) {
+    Object.entries(vals).forEach(([k, v]) => {
+      const el = document.getElementById('s-' + k);
+      if (el) el.value = v;
+    });
+  }
+
+  function readSettings() {
+    const out = {};
+    Object.keys(DEFAULTS).forEach(k => {
+      const el = document.getElementById('s-' + k);
+      if (el) out[k] = parseFloat(el.value);
+    });
+    return out;
+  }
+
+  function setSettingsStatus(msg, ok) {
+    const el = document.getElementById('settings-status');
+    el.textContent = msg;
+    el.style.color = ok ? 'var(--fg-green)' : 'var(--fg-red)';
+    setTimeout(() => el.textContent = '', 3000);
+  }
+
+  async function applySettings() {
+    const vals = readSettings();
+    try {
+      const res = await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vals),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      setSettingsStatus('Applied!', true);
+      // reset tower with new settings
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        frameQueue = [];
+        pendingResult = null;
+        sandboxTerminated = false;
+        setBusy(true);
+        socket.send(JSON.stringify({ type: 'Reset', seed: getSeedValue() }));
+        setBusy(false);
+      }
+    } catch (e) {
+      setSettingsStatus('Error: ' + e.message, false);
+    }
+  }
+
+  function restoreDefaults() {
+    populateSettings(DEFAULTS);
+    setSettingsStatus('Defaults restored — click Apply to use them', true);
+  }
+
+  // Load current settings when tab opens
+  async function loadSettings() {
+    try {
+      const res = await fetch('/api/settings');
+      if (res.ok) populateSettings(await res.json());
+      else populateSettings(DEFAULTS);
+    } catch { populateSettings(DEFAULTS); }
+  }
+
+  // init with defaults immediately
+  populateSettings(DEFAULTS);
 
   document.addEventListener('keydown', e => {
     if (e.key === 'ArrowLeft') prevStep();

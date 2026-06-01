@@ -209,12 +209,94 @@ class PreviewState:
         target = getattr(self, "_target", None)
         return render_png(self._simulation, self._camera, target=target)
 
+from jenga.settings import (
+    DEFAULT_SETTINGS, JengaSettings,
+    TowerGeometrySettings, TowerRandomnessSettings,
+    PhysicsSettings, RenderSettings,
+)
 
+def _settings_to_flat(s: JengaSettings) -> dict:
+    return {
+        "block_length": s.geometry.block_length,
+        "block_width": s.geometry.block_width,
+        "block_height": s.geometry.block_height,
+        "block_mass": s.geometry.block_mass,
+        "layer_count": s.geometry.layer_count,
+        "blocks_per_layer": s.geometry.blocks_per_layer,
+        "block_longitudinal_offset": s.randomness.block_longitudinal_offset,
+        "layer_shift_step": s.randomness.layer_shift_step,
+        "layer_yaw_degrees": s.randomness.layer_yaw_degrees,
+        "extra_layer_gap": s.randomness.extra_layer_gap,
+        "gravity_z": s.physics.gravity[2],
+        "lateral_friction": s.physics.lateral_friction,
+        "restitution": s.physics.restitution,
+        "push_force_multiplier": s.physics.push_force_multiplier,
+        "intensity_gentle": dict(s.physics.intensities).get("Gentle", 0.05),
+        "intensity_firm": dict(s.physics.intensities).get("Firm", 0.15),
+        "intensity_hard": dict(s.physics.intensities).get("Hard", 0.40),
+        "settle_timeout_seconds": s.physics.settle_timeout_seconds,
+        "image_width": s.render.image_width,
+        "image_height": s.render.image_height,
+        "light_ambient_coefficient": s.render.light_ambient_coefficient,
+        "light_diffuse_coefficient": s.render.light_diffuse_coefficient,
+    }
+
+def _flat_to_settings(flat: dict) -> JengaSettings:
+    d = DEFAULT_SETTINGS
+    return JengaSettings(
+        geometry=TowerGeometrySettings(
+            block_length=flat.get("block_length", d.geometry.block_length),
+            block_width=flat.get("block_width", d.geometry.block_width),
+            block_height=flat.get("block_height", d.geometry.block_height),
+            block_mass=flat.get("block_mass", d.geometry.block_mass),
+            layer_count=int(flat.get("layer_count", d.geometry.layer_count)),
+            blocks_per_layer=int(flat.get("blocks_per_layer", d.geometry.blocks_per_layer)),
+        ),
+        randomness=TowerRandomnessSettings(
+            block_longitudinal_offset=flat.get("block_longitudinal_offset", d.randomness.block_longitudinal_offset),
+            layer_shift_step=flat.get("layer_shift_step", d.randomness.layer_shift_step),
+            layer_yaw_degrees=flat.get("layer_yaw_degrees", d.randomness.layer_yaw_degrees),
+            extra_layer_gap=flat.get("extra_layer_gap", d.randomness.extra_layer_gap),
+        ),
+        physics=PhysicsSettings(
+            gravity=(0.0, 0.0, flat.get("gravity_z", d.physics.gravity[2])),
+            lateral_friction=flat.get("lateral_friction", d.physics.lateral_friction),
+            restitution=flat.get("restitution", d.physics.restitution),
+            push_force_multiplier=flat.get("push_force_multiplier", d.physics.push_force_multiplier),
+            intensities=(
+                ("Gentle", flat.get("intensity_gentle", 0.05)),
+                ("Firm", flat.get("intensity_firm", 0.15)),
+                ("Hard", flat.get("intensity_hard", 0.40)),
+            ),
+            settle_timeout_seconds=flat.get("settle_timeout_seconds", d.physics.settle_timeout_seconds),
+        ),
+        render=RenderSettings(
+            image_width=int(flat.get("image_width", d.render.image_width)),
+            image_height=int(flat.get("image_height", d.render.image_height)),
+            light_ambient_coefficient=flat.get("light_ambient_coefficient", d.render.light_ambient_coefficient),
+            light_diffuse_coefficient=flat.get("light_diffuse_coefficient", d.render.light_diffuse_coefficient),
+        ),
+    )
+
+_current_settings: dict = _settings_to_flat(DEFAULT_SETTINGS)
 preview = PreviewState()
 motion_lock = Lock()
 atexit.register(preview.close)
 
 app = FastAPI(title="JengaBench Live Tower Inspector", version="1.0.0")
+
+@app.get("/api/settings")
+def get_settings() -> dict:
+    return _current_settings
+
+
+@app.post("/api/settings")
+async def update_settings(request: Request) -> dict:
+    global _current_settings
+    body = await request.json()
+    _current_settings = {**_current_settings, **body}
+    await asyncio.to_thread(preview.reset_scene, preview._seed)
+    return _current_settings
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
