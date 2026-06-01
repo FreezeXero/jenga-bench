@@ -586,32 +586,43 @@ def capture(request: CameraRequest) -> Response:
 @app.websocket("/ws/sandbox")
 async def sandbox(websocket: WebSocket) -> None:
     await websocket.accept()
+    logging.info("[ws] client connected")
     try:
         while True:
             command = await websocket.receive_json()
+            logging.info("[ws] command: %s", command.get("type"))
             if command.get("type") == "Reset":
                 if motion_lock.locked():
+                    logging.warning("[ws] reset blocked — motion_lock held")
                     await websocket.send_json({"type": "error", "message": "busy"})
                     continue
+                logging.info("[ws] resetting seed=%s", command.get("seed", 0))
                 scene = await asyncio.to_thread(preview.reset_scene, int(command.get("seed", 0)))
+                logging.info("[ws] reset done")
                 await websocket.send_json({"type": "scene", "scene": scene})
                 continue
             if command.get("type") not in ("Push", "PlaceBack"):
                 await websocket.send_json({"type": "error", "message": "type must be Reset, Push, or PlaceBack"})
                 continue
             if not motion_lock.acquire(blocking=False):
+                logging.warning("[ws] motion blocked — lock held")
                 await websocket.send_json({"type": "error", "message": "busy"})
                 continue
             try:
                 try:
                     queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
                     loop = asyncio.get_running_loop()
+                    frame_count = 0
 
                     def emit(frame_payload: dict[str, object]) -> None:
+                        nonlocal frame_count
+                        frame_count += 1
                         loop.call_soon_threadsafe(queue.put_nowait, frame_payload)
                         time.sleep(0.001)
 
-                    if command.get("type") == "Push":
+                    cmd_type = command.get("type")
+                    if cmd_type == "Push":
+                        logging.info("[ws] push L%s %s %s %s", command.get("layer"), command.get("color"), command.get("face"), command.get("intensity"))
                         motion_task = asyncio.create_task(
                             asyncio.to_thread(
                                 preview.push,
@@ -626,6 +637,7 @@ async def sandbox(websocket: WebSocket) -> None:
                             )
                         )
                     else:
+                        logging.info("[ws] place_back %s", command.get("position"))
                         motion_task = asyncio.create_task(
                             asyncio.to_thread(
                                 preview.place_back,
@@ -635,29 +647,48 @@ async def sandbox(websocket: WebSocket) -> None:
                                 emit,
                             )
                         )
+                    t0 = time.monotonic()
                     while not motion_task.done() or not queue.empty():
                         try:
                             frame_payload = await asyncio.wait_for(queue.get(), timeout=0.05)
                         except asyncio.TimeoutError:
+                            elapsed = time.monotonic() - t0
+                            if elapsed > 30:
+                                logging.error("[ws] motion timed out after %.1fs (%d frames)", elapsed, frame_count)
+                                motion_task.cancel()
+                                await websocket.send_json({"type": "error", "message": "motion timed out"})
+                                break
                             continue
                         await websocket.send_json(frame_payload)
                         await asyncio.sleep(1.0 / 30.0)
-                    frames = await motion_task
+                    else:
+                        frames = await motion_task
+                        logging.info("[ws] motion done: %d frames in %.1fs, outcome=%s", len(frames), time.monotonic() - t0, frames[-1]["phase"] if frames else "?")
+                        await websocket.send_json(
+                            {
+                                "type": "result",
+                                "outcome": frames[-1]["phase"],
+                                "frame_count": len(frames),
+                                "scene": preview.scene(),
+                            }
+                        )
+                        continue
                 except (PlaceValidationError, PushValidationError, RuntimeError) as exc:
+                    logging.error("[ws] action error: %s", exc)
                     await websocket.send_json({"type": "error", "message": str(exc)})
                     continue
-                await websocket.send_json(
-                    {
-                        "type": "result",
-                        "outcome": frames[-1]["phase"],
-                        "frame_count": len(frames),
-                        "scene": preview.scene(),
-                    }
-                )
+                except Exception as exc:
+                    logging.exception("[ws] unexpected error in motion")
+                    await websocket.send_json({"type": "error", "message": f"internal error: {exc}"})
+                    continue
             finally:
                 motion_lock.release()
+                logging.info("[ws] motion_lock released")
     except WebSocketDisconnect:
+        logging.info("[ws] client disconnected")
         return
+    except Exception:
+        logging.exception("[ws] websocket handler crashed")
 
 
 if __name__ == "__main__":
