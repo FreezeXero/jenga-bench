@@ -273,9 +273,7 @@
       <div class="full-replay-viewer">
         <div class="full-replay-frame" id="full-replay-frame-main">
           <canvas id="replay-canvas" width="620" height="620"></canvas>
-          <img id="replay-ai-view" class="replay-ai-img hidden" alt="AI view">
           <div class="full-replay-no-frame" id="full-replay-empty">Select a recorded step</div>
-          <button class="replay-view-toggle" id="replay-view-toggle" onclick="toggleReplayView()">AI View</button>
         </div>
         <div class="replay-detail" id="full-replay-info">
           <div class="empty-state">Load replay data to begin</div>
@@ -792,45 +790,16 @@
     } else if(step.context){wrap.append(el('div','step-reasoning',step.context));}
     const details=el('details','step-action-details');const summary=el('summary','step-action-summary','Raw action');details.append(summary,el('pre','step-action',JSON.stringify(cleanAction(step.action),null,2)));wrap.append(details);
     if(step.terminated)wrap.append(el('div','step-terminated','Episode terminated'));
+    const capture=el('div','replay-capture'),frame=el('div','step-frame');
+    if(step.agent_frame){const img=el('img');img.alt='AI view';img.src=step.agent_frame.startsWith('data:')?step.agent_frame:`data:image/png;base64,${step.agent_frame}`;frame.append(img);}
+    else frame.append(el('div','step-frame-placeholder','No captured AI frame'));
+    capture.append(frame,el('div','step-frame-label','AI view'));wrap.append(capture);
     return wrap;
-  }
-
-  let replayViewMode = 'tower';
-
-  function toggleReplayView() {
-    const canvas = document.getElementById('replay-canvas');
-    const aiImg = document.getElementById('replay-ai-view');
-    const btn = document.getElementById('replay-view-toggle');
-    if (replayViewMode === 'tower') {
-      replayViewMode = 'ai';
-      canvas.classList.add('hidden');
-      aiImg.classList.remove('hidden');
-      btn.textContent = '3D View';
-    } else {
-      replayViewMode = 'tower';
-      canvas.classList.remove('hidden');
-      aiImg.classList.add('hidden');
-      btn.textContent = 'AI View';
-      recordedRenderer.resize(); recordedRenderer.render();
-    }
-  }
-
-  function updateReplayAIView(step) {
-    const aiImg = document.getElementById('replay-ai-view');
-    if (step.agent_frame) {
-      aiImg.src = step.agent_frame.startsWith('data:') ? step.agent_frame : `data:image/png;base64,${step.agent_frame}`;
-      document.getElementById('replay-view-toggle').classList.remove('hidden');
-    } else {
-      aiImg.src = '';
-      aiImg.classList.add('hidden');
-      if (replayViewMode === 'ai') { replayViewMode = 'tower'; document.getElementById('replay-canvas').classList.remove('hidden'); document.getElementById('replay-view-toggle').textContent = 'AI View'; recordedRenderer.resize(); recordedRenderer.render(); }
-      document.getElementById('replay-view-toggle').classList.add('hidden');
-    }
   }
 
   function showStep(index) {
     if(!currentSteps.length)return;stopStepPlayback();currentStepIdx=Math.max(0,Math.min(currentSteps.length-1,index));const step=currentSteps[currentStepIdx];
-    document.getElementById('full-replay-info').replaceChildren(makeStepInfo(step));updateReplayAIView(step);renderTimeline();
+    document.getElementById('full-replay-info').replaceChildren(makeStepInfo(step));renderTimeline();
     const frames=framesForStep(step);if(step.recording_status==='unavailable'||!frames.length){document.getElementById('full-replay-empty').classList.remove('hidden');document.getElementById('full-replay-frame-counter').textContent='— frames';return;}
     document.getElementById('full-replay-empty').classList.add('hidden');replayFrameIdx=0;replayCurrentFrame=cloneReplayFrame(frames[0]);recordedRenderer.setFrame(replayCurrentFrame);updateFrameCounter(frames);if(frames.length>1)startStepPlayback();
   }
