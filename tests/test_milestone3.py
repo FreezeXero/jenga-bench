@@ -274,7 +274,7 @@ class ModelPushTests(unittest.TestCase):
         env = JengaBenchEnv()
         try:
             env.reset(seed=0)
-            env.step({"type": "ChangeViewpoint", "azimuth": 90, "pitch": 5, "distance_cm": 60})
+            env.step({"type": "ChangeViewpoint", "direction": "E", "elevation_layer": 9, "distance": "Medium"})
             result = env.step(
                 {
                     "type": "Push",

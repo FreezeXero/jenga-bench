@@ -17,7 +17,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from jenga.render import CameraPose, render_png
+from jenga.render import DIRECTION_AZIMUTHS, CameraPose, render_png
 from jenga.sim import (
     JengaSimulation,
     PlaceRequest,
@@ -33,10 +33,19 @@ MAX_INSPECTOR_PITCH = 75.0
 STATIC_DIR = Path(__file__).with_name("static")
 
 
+from typing import Literal, Optional
+
+DISTANCES = {"Close": 15.0, "Medium": 30.0, "Full": 45.0}
+
+class TargetBlock(BaseModel):
+    layer: int
+    color: Literal["Blue", "Brown", "Red"]
+
 class CameraRequest(BaseModel):
-    azimuth: float
-    pitch: float
-    distance_cm: float
+    direction: Literal["N", "NE", "E", "SE", "S", "SW", "W", "NW"] = "SW"
+    elevation_layer: int = 9
+    distance: Literal["Close", "Medium", "Full"] = "Full"
+    target_block: Optional[TargetBlock] = None
 
 
 class PreviewState:
@@ -71,10 +80,11 @@ class PreviewState:
             self._reset_locked(seed)
             return self.scene()
 
-    def frame(self, camera: CameraPose) -> tuple[bytes, CameraPose]:
+    def frame(self, camera: CameraPose, target: tuple[float, float, float] | None = None) -> tuple[bytes, CameraPose]:
         with self._lock:
             self._ensure_simulation()
             self._camera = camera
+            self._target = target
             return self._render_locked(), self._camera
 
     def scene(self) -> dict[str, object]:
@@ -193,7 +203,8 @@ class PreviewState:
 
     def _render_locked(self) -> bytes:
         assert self._simulation is not None
-        return render_png(self._simulation, self._camera)
+        target = getattr(self, "_target", None)
+        return render_png(self._simulation, self._camera, target=target)
 
 
 preview = PreviewState()
@@ -233,21 +244,36 @@ def _camera_payload(camera: CameraPose) -> dict[str, float]:
     }
 
 
-def _validated_camera(request: CameraRequest) -> CameraPose:
-    values = (request.azimuth, request.pitch, request.distance_cm)
-    if not all(math.isfinite(value) for value in values):
-        raise HTTPException(status_code=422, detail="camera values must be finite")
-    if not 0.0 <= request.azimuth <= 360.0:
-        raise HTTPException(status_code=422, detail="azimuth must be between 0 and 360")
-    if not MIN_INSPECTOR_PITCH <= request.pitch <= MAX_INSPECTOR_PITCH:
-        raise HTTPException(status_code=422, detail="pitch must be between -45 and 75")
-    if not 20.0 <= request.distance_cm <= 120.0:
-        raise HTTPException(status_code=422, detail="distance_cm must be between 20 and 120")
-    return CameraPose(
-        azimuth=request.azimuth % 360.0,
-        pitch=request.pitch,
-        distance_cm=request.distance_cm,
+def _validated_camera(request: CameraRequest) -> tuple[CameraPose, tuple[float, float, float] | None]:
+    if not 1 <= request.elevation_layer <= 18:
+        raise HTTPException(status_code=422, detail="elevation_layer must be between 1 and 18")
+    if request.target_block and not 1 <= request.target_block.layer <= 18:
+        raise HTTPException(status_code=422, detail="target_block.layer must be between 1 and 18")
+    pose = CameraPose.from_viewpoint(
+        direction=request.direction,
+        elevation_layer=request.elevation_layer,
+        distance_cm=DISTANCES[request.distance],
     )
+    target: tuple[float, float, float] | None = None
+    if request.target_block:
+        target = _resolve_target_block(request.target_block.layer, request.target_block.color)
+    else:
+        target = CameraPose.target_for_layer(request.elevation_layer)
+    return pose, target
+
+
+def _resolve_target_block(layer: int, color: str) -> tuple[float, float, float]:
+    if preview._simulation is not None:
+        import pybullet as bullet
+        for block in preview._simulation.blocks:
+            if (block.spec.layer == layer
+                    and block.spec.color_name == color
+                    and block.body_id not in preview._simulation.retired_body_ids):
+                pos, _ = bullet.getBasePositionAndOrientation(
+                    block.body_id, physicsClientId=preview._simulation.client_id
+                )
+                return tuple(pos)
+    return CameraPose.target_for_layer(layer)
 
 
 @app.get("/")
@@ -272,13 +298,15 @@ def state() -> dict[str, object]:
 
 @app.post("/api/frame")
 def frame(request: CameraRequest) -> Response:
-    data, camera = preview.frame(_validated_camera(request))
+    pose, target = _validated_camera(request)
+    data, camera = preview.frame(pose, target)
     return _png_response(data, camera)
 
 
 @app.post("/api/capture")
 def capture(request: CameraRequest) -> Response:
-    data, camera = preview.frame(_validated_camera(request))
+    pose, target = _validated_camera(request)
+    data, camera = preview.frame(pose, target)
     return _png_response(data, camera)
 
 

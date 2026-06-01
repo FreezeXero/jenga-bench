@@ -17,16 +17,45 @@ IMAGE_HEIGHT = RENDER.image_height
 TOWER_MIDPOINT = RENDER.tower_midpoint
 
 
+DIRECTION_AZIMUTHS = {
+    "N": 0, "NE": 45, "E": 90, "SE": 135,
+    "S": 180, "SW": 225, "W": 270, "NW": 315,
+}
+
+BLOCK_HEIGHT = DEFAULT_SETTINGS.geometry.block_height
+
+
 @dataclass(frozen=True)
 class CameraPose:
     azimuth: float
     pitch: float
     distance_cm: float
 
+    @classmethod
+    def from_viewpoint(
+        cls,
+        direction: str,
+        elevation_layer: int,
+        distance_cm: float,
+    ) -> CameraPose:
+        azimuth = DIRECTION_AZIMUTHS.get(direction, 225)
+        target_z = (elevation_layer - 0.5) * BLOCK_HEIGHT
+        pitch = 15.0
+        return cls(azimuth=azimuth, pitch=pitch, distance_cm=distance_cm)
 
-def render_png(simulation: JengaSimulation, camera: CameraPose) -> bytes:
+    @staticmethod
+    def target_for_layer(elevation_layer: int) -> tuple[float, float, float]:
+        return (0.0, 0.0, (elevation_layer - 0.5) * BLOCK_HEIGHT)
+
+
+def render_png(
+    simulation: JengaSimulation,
+    camera: CameraPose,
+    target: tuple[float, float, float] | None = None,
+) -> bytes:
+    aim = target if target is not None else TOWER_MIDPOINT
     view = bullet.computeViewMatrixFromYawPitchRoll(
-        cameraTargetPosition=TOWER_MIDPOINT,
+        cameraTargetPosition=aim,
         distance=camera.distance_cm / 100.0,
         yaw=camera.azimuth,
         pitch=-camera.pitch,

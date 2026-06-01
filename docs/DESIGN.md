@@ -56,7 +56,7 @@ The base where the Jenga tower stands on. It is black, about 3 layers tall
 
 ### Camera State
 
-The camera is persistent and stateful. It stays where it was last placed until a Change Viewpoint action moves it. The camera always aims at its target (a block, or layer-center by default), at a fixed distance, orbiting by azimuth + pitch.
+The camera is persistent and stateful. It stays where it was last placed until a Change Viewpoint action moves it. The camera always aims at its target block (or layer-center by default), orbiting at the height of the elevation layer.
 
 | Action           | Camera Effect                                              |
 |------------------|------------------------------------------------------------|
@@ -65,14 +65,14 @@ The camera is persistent and stateful. It stays where it was last placed until a
 
 The camera state contains:
 
-| Field        | Description                                                                                                      |
-|--------------|------------------------------------------------------------------------------------------------------------------|
-| target_block | what the camera aims at. A specific block's center. Resolved live from current sim state. If the target block is removed, resets to the default target from reset. |
-| azimuth      | angle around the tower. Continuous, 0–360 degrees.                                                               |
-| pitch        | vertical angle, looking up or down. Continuous, -90 to 90 degrees.                                               |
-| distance     | distance from target in cm. Range: minimum close-up to maximum that fits entire tower from center.               |
+| Field           | Description                                                                                                      |
+|-----------------|------------------------------------------------------------------------------------------------------------------|
+| direction       | compass direction the camera looks from: N, NE, E, SE, S, SW, W, NW                                            |
+| elevation_layer | which layer height the camera orbits at (integer, 1–18)                                                          |
+| distance        | Close (15 cm), Medium (30 cm), or Full (45 cm)                                                                   |
+| target_block    | what the camera aims at, identified by layer + color (e.g. layer 5, Blue). Resolved live from current sim state. If the target block is removed, resets to the default target. Optional — omit to aim at the elevation layer's center. |
 
-Default camera on reset: three-quarter view (diagonal azimuth, e.g. SW), mid-height (~layer 9–10), slightly looking down, whole tower in frame with base visible. Diagonal azimuths (NE, SE, SW, NW) show two faces at once and give better depth reading than flat cardinal views.
+Default camera on reset: SW direction, mid-height (layer 9), distance 45 cm. Diagonal directions (NE, SE, SW, NW) show two faces at once and give better depth reading than flat cardinal views.
 
 ### Physics State
 
@@ -136,6 +136,13 @@ reasoning annotations.
 
 Sets a new camera state. Tower state unchanged. Reward = 0.
 
+| Field           | Description                                                                                    |
+|-----------------|------------------------------------------------------------------------------------------------|
+| direction       | compass direction: N, NE, E, SE, S, SW, W, NW                                                 |
+| elevation_layer | camera height as layer number (1–18)                                                           |
+| distance        | Close (15 cm), Medium (30 cm), or Full (45 cm)                                                 |
+| target_block    | optional — layer + color of block to aim at (e.g. `{"layer": 5, "color": "Blue"}`). Omit for layer center. |
+
 #### Push
 
 | Field     | Description                                                                                              |
@@ -143,7 +150,7 @@ Sets a new camera state. Tower state unchanged. Reward = 0.
 | layer     | 1 through one below the current logical top layer (bottom to top), identifies the target layer. The top layer cannot be pushed. |
 | color     | identifies the target block within the layer (color = slot)                                              |
 | face      | cardinal direction of the face to push from. North-South blocks: North or South. East-West blocks: East or West. Push from North = force applied southward through the block. |
-| contact   | where on the face to apply force. Discrete 3x3 grid: top-left, top-center, top-right, center-left, center, center-right, bottom-left, bottom-center, bottom-right. Off-center contact generates torque. |
+| contact   | where on the face to apply force: left, center, or right. Off-center contact generates torque. |
 | intensity | Gentle, Firm, or Hard. Gentle doubles as a probe — may not fully extract, letting the player read looseness from the result. |
 
 | Rule      | Description                                                                                              |
@@ -159,13 +166,11 @@ toward the consecutive-viewpoint timeout.
 
 | Field    | Description                                                                                    |
 |----------|------------------------------------------------------------------------------------------------|
-| position | Left, Middle, or Right slot on the next top layer. Observation tells the agent which slots are available. Picking an occupied slot is an invalid action. |
-| rotation_degrees | Yaw offset from the required layer orientation, from -5 to +5 degrees. Values outside this range are invalid. |
+| position | slot on the next top layer, using directional names: East/Middle/West for North-South rows, South/Middle/North for East-West rows. Observation tells the agent which slots are available. Picking an occupied slot is an invalid action. |
 
 | Rule     | Description                                                                                    |
 |----------|------------------------------------------------------------------------------------------------|
 | Orientation | follows layer alternation (next layer rotates 90° from current top)                         |
-| Slot mapping | Left/Middle/Right maps to East/Middle/West for North-South rows and South/Middle/North for East-West rows |
 | Row anchor | a new top row is centered over the average x/y center of the current highest occupied row; that center is reused until all three slots fill |
 | Drop     | block is released 0.5 cm above the top of the tower, then settles                             |
 
