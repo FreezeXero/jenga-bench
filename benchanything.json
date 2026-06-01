@@ -24,8 +24,8 @@
 
     "reward": {
       "type": "scalar",
-      "range": { "low": -10.5, "high": 1.0 },
-      "description": "Successful extractions score +1, valid camera changes and placements score 0, invalid actions score -0.5, collapse terminates the episode, and ten turns without a successful extraction terminate with -10."
+      "range": { "low": -1.5, "high": 1.0 },
+      "description": "Successful extractions score +1, valid camera changes and placements score 0, invalid actions score -0.5, collapse terminates the episode, and ten turns without a successful extraction terminate with -1."
     },
 
     "episode": {

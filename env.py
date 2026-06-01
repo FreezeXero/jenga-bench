@@ -18,7 +18,7 @@ PERFECT_RAW_SCORE = 98.0
 EXTRACTION_COUNTDOWN_START = 10
 CONTEXT_HISTORY_LIMIT = 5
 INVALID_ACTION_PENALTY = -0.5
-EXTRACTION_TIMEOUT_PENALTY = -10.0
+EXTRACTION_TIMEOUT_PENALTY = -1.0
 
 DIRECTIONS = ("N", "NE", "E", "SE", "S", "SW", "W", "NW")
 DISTANCES = {"Close": 15.0, "Medium": 30.0, "Full": 45.0}
@@ -289,7 +289,7 @@ class JengaBenchEnv(BaseEnv):
             '"target_block":{"layer":int,"color":"Blue|Green|Red"}} or '
             '{"type":"Push","context":"brief rationale","layer":"1..one below current top layer","color":"Blue|Green|Red",'
             '"face":"North|South (odd layers) or East|West (even layers)","contact":"center|left|right",'
-            '"intensity":"Gentle|Firm|Hard"} or '
+            '"intensity":"Gentle (barely moves block)|Firm (strong push)|Hard (full force, may topple tower)"} or '
             '{"type":"PlaceBack","context":"brief rationale","position":"<one of available_placement_positions>"}. '
             f"Camera: direction={self._camera.direction}, "
             f"elevation_layer={self._camera.elevation_layer}, "
@@ -304,7 +304,7 @@ class JengaBenchEnv(BaseEnv):
             f"Last 5 contexts (oldest to newest): {context_history}. "
             "Only a fully extracted block resets the move countdown to 10; changing viewpoint, placing back, "
             "invalid actions, or pushes that do not extract a block still consume a move. "
-            "If the countdown reaches 0, the episode terminates with a -10 point penalty."
+            "If the countdown reaches 0, the episode terminates with a -1 point penalty."
         )
 
     def _camera_info(self) -> dict[str, Any]:
