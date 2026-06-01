@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import math
+import base64
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -45,6 +46,10 @@ class JengaBenchEnv(BaseEnv):
         self._termination_reason = ""
         self._seed: int | None = None
         self._simulation: JengaSimulation | None = None
+        self._episode_replay: dict[str, Any] = {"schema_version": "1", "initial_frame": None, "steps": []}
+        self._active_action: Any = None
+        self._active_agent_frame: str | None = None
+        self._active_physics_frames: list[dict[str, Any]] = []
 
     def reset(self, seed: int | None = None, **params: Any) -> dict[str, Any]:
         del params
@@ -66,6 +71,14 @@ class JengaBenchEnv(BaseEnv):
         except Exception:
             self.close()
             raise
+        self._episode_replay = {
+            "schema_version": "1",
+            "initial_frame": self._simulation.last_frames[0] if self._simulation.last_frames else None,
+            "steps": [],
+        }
+        self._active_action = None
+        self._active_agent_frame = None
+        self._active_physics_frames = []
         return {
             "data": self._render_png(),
             "content_type": PNG_CONTENT_TYPE,
@@ -73,6 +86,9 @@ class JengaBenchEnv(BaseEnv):
         }
 
     def step(self, action: Any) -> StepResult:
+        self._active_action = action
+        self._active_agent_frame = base64.b64encode(self._render_png()).decode("ascii")
+        self._active_physics_frames = []
         if self._terminated:
             return self._result(
                 reward=INVALID_ACTION_PENALTY,
@@ -130,6 +146,7 @@ class JengaBenchEnv(BaseEnv):
                 intensity=action.get("intensity"),
             )
             push_result = self._simulation.push(request)
+            self._active_physics_frames = list(push_result.frames)
         except PushValidationError as exc:
             self._raw_points += INVALID_ACTION_PENALTY
             return self._result_after_non_extraction_step(
@@ -167,6 +184,7 @@ class JengaBenchEnv(BaseEnv):
                 position=action.get("position"),
             )
             place_result = self._simulation.place_back(request)
+            self._active_physics_frames = list(place_result.frames)
         except PlaceValidationError as exc:
             self._raw_points += INVALID_ACTION_PENALTY
             return self._result_after_non_extraction_step(
@@ -204,6 +222,7 @@ class JengaBenchEnv(BaseEnv):
 
     def _result(self, *, reward: float, event: str | list[str]) -> StepResult:
         events = [event] if isinstance(event, str) else event
+        self._record_replay_step(reward=reward, events=events)
         info = {
             "raw_points": self._format_score(self._raw_points),
             "normalized_score": self._format_score(self._normalized_score()),
@@ -216,6 +235,8 @@ class JengaBenchEnv(BaseEnv):
             "moves_until_extraction": str(self._moves_until_extraction),
             "latest_context": self._latest_context,
             "recent_contexts": json.dumps(self._context_history),
+            "replay_schema_version": "1",
+            "episode_replay": json.dumps(self._episode_replay, sort_keys=True),
         }
         if self._simulation is not None:
             info["outcome"] = self._last_outcome()
@@ -234,6 +255,24 @@ class JengaBenchEnv(BaseEnv):
         # setattr also keeps this module importable with the older public wheel.
         result.content_type = PNG_CONTENT_TYPE
         return result
+
+    def _record_replay_step(self, *, reward: float, events: list[str]) -> None:
+        action = self._active_action if isinstance(self._active_action, dict) else {}
+        self._episode_replay["steps"].append(
+            {
+                "step": len(self._episode_replay["steps"]) + 1,
+                "action": action,
+                "context": action.get("context", "") if isinstance(action, dict) else "",
+                "reward": reward,
+                "terminated": self._terminated,
+                "truncated": False,
+                "events": events,
+                "camera_state": self._camera_info(),
+                "agent_frame": self._active_agent_frame,
+                "tower_state": self._tower_state(),
+                "physics_frames": self._active_physics_frames,
+            }
+        )
 
     def _system_prompt(self) -> str:
         context_history = (

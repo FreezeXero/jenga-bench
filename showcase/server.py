@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import atexit
 import asyncio
+import json
 import logging
 import math
 import time
@@ -31,6 +32,7 @@ DEFAULT_CAMERA = CameraPose(azimuth=225.0, pitch=15.0, distance_cm=45.0)
 MIN_INSPECTOR_PITCH = -45.0
 MAX_INSPECTOR_PITCH = 75.0
 STATIC_DIR = Path(__file__).with_name("static")
+DATA_DIR = Path(__file__).with_name("data")
 
 
 from typing import Literal, Optional
@@ -284,6 +286,179 @@ motion_lock = Lock()
 atexit.register(preview.close)
 
 app = FastAPI(title="JengaBench Live Tower Inspector", version="1.0.0")
+
+
+def _json_value(value: object, default: object) -> object:
+    if not isinstance(value, str):
+        return value if value is not None else default
+    try:
+        return json.loads(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _replay_files() -> dict[str, Path]:
+    if not DATA_DIR.exists():
+        return {}
+    files: dict[str, Path] = {}
+    for path in DATA_DIR.glob("*.json"):
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        run_id = payload.get("run", {}).get("id")
+        if isinstance(run_id, str):
+            files[run_id] = path
+    return files
+
+
+def _clean_step(step: dict, index: int) -> dict:
+    action = step.get("action") if isinstance(step.get("action"), dict) else {}
+    info = step.get("info") if isinstance(step.get("info"), dict) else {}
+    observation = step.get("observation")
+    if isinstance(observation, dict):
+        observation = observation.get("data")
+    events = _json_value(step.get("events", info.get("events")), [])
+    camera_state = _json_value(step.get("camera_state", info.get("camera_state")), {})
+    tower_state = _json_value(step.get("tower_state", info.get("tower_state")), [])
+    physics_frames = _json_value(step.get("physics_frames", info.get("replay_frames")), [])
+    return {
+        "step": int(step.get("step", index + 1)),
+        "recording_status": "recorded",
+        "action": action,
+        "context": str(step.get("context") or step.get("reasoning") or action.get("context") or info.get("latest_context") or ""),
+        "reward": float(step.get("reward", 0.0)),
+        "terminated": bool(step.get("terminated", False)),
+        "truncated": bool(step.get("truncated", False)),
+        "events": events if isinstance(events, list) else [],
+        "camera_state": camera_state if isinstance(camera_state, dict) else {},
+        "agent_frame": step.get("agent_frame") if isinstance(step.get("agent_frame"), str) else observation if isinstance(observation, str) else None,
+        "tower_state": tower_state if isinstance(tower_state, list) else [],
+        "physics_frames": physics_frames if isinstance(physics_frames, list) else [],
+    }
+
+
+def _legacy_episode(episode: dict) -> dict:
+    info = episode.get("terminal_info") if isinstance(episode.get("terminal_info"), dict) else {}
+    frames = _json_value(info.get("replay_frames"), [])
+    tower_state = _json_value(info.get("tower_state"), [])
+    camera_state = _json_value(info.get("camera_state"), {})
+    events = _json_value(info.get("events"), [])
+    step_count = int(episode.get("steps", 1) or 1)
+    unavailable = [
+        {
+            "step": index,
+            "recording_status": "unavailable",
+            "action": {},
+            "context": "",
+            "reward": 0.0,
+            "terminated": False,
+            "truncated": False,
+            "events": [],
+            "camera_state": {},
+            "agent_frame": None,
+            "tower_state": [],
+            "physics_frames": [],
+        }
+        for index in range(1, step_count)
+    ]
+    step = {
+        "step": step_count,
+        "recording_status": "recorded",
+        "action": {},
+        "context": str(info.get("latest_context", "")),
+        "reward": float(episode.get("total_reward", 0.0)),
+        "terminated": bool(info.get("termination_reason")),
+        "truncated": False,
+        "events": events if isinstance(events, list) else [],
+        "camera_state": camera_state if isinstance(camera_state, dict) else {},
+        "agent_frame": None,
+        "tower_state": tower_state if isinstance(tower_state, list) else [],
+        "physics_frames": frames if isinstance(frames, list) else [],
+    }
+    return {
+        "id": episode.get("id"),
+        "seed": episode.get("seed"),
+        "status": episode.get("status"),
+        "total_reward": episode.get("total_reward", 0.0),
+        "completeness": "partial",
+        "initial_frame": step["physics_frames"][0] if step["physics_frames"] else None,
+        "steps": [*unavailable, step],
+    }
+
+
+def _normalize_episode(payload: dict, episode: dict) -> dict:
+    info = episode.get("terminal_info") if isinstance(episode.get("terminal_info"), dict) else {}
+    replay = _json_value(info.get("episode_replay"), None)
+    if isinstance(replay, dict) and isinstance(replay.get("steps"), list):
+        return {
+            "id": episode.get("id"),
+            "seed": episode.get("seed"),
+            "status": episode.get("status"),
+            "total_reward": episode.get("total_reward", 0.0),
+            "completeness": "complete",
+            "initial_frame": replay.get("initial_frame"),
+            "steps": [_clean_step(step, index) for index, step in enumerate(replay["steps"]) if isinstance(step, dict)],
+        }
+    episode_id = episode.get("id")
+    for source_name in ("replay", "traces"):
+        source = payload.get(source_name, {})
+        turns = source.get(episode_id) if isinstance(source, dict) else None
+        if isinstance(turns, list) and turns:
+            return {
+                "id": episode_id,
+                "seed": episode.get("seed"),
+                "status": episode.get("status"),
+                "total_reward": episode.get("total_reward", 0.0),
+                "completeness": "complete",
+                "initial_frame": None,
+                "steps": [_clean_step(step, index) for index, step in enumerate(turns) if isinstance(step, dict)],
+            }
+    return _legacy_episode(episode)
+
+
+def _normalize_replay(payload: dict) -> dict:
+    run = payload.get("run") if isinstance(payload.get("run"), dict) else {}
+    config = run.get("config") if isinstance(run.get("config"), dict) else {}
+    agent = config.get("agent_config") if isinstance(config.get("agent_config"), dict) else {}
+    episodes = payload.get("episodes") if isinstance(payload.get("episodes"), list) else []
+    normalized_episodes = [_normalize_episode(payload, episode) for episode in episodes if isinstance(episode, dict)]
+    return {
+        "id": run.get("id"),
+        "domain_name": payload.get("domain_name", "JengaBench"),
+        "model": agent.get("model", "Unknown model"),
+        "status": run.get("status"),
+        "score": float((run.get("scores") or {}).get("normalized_score", 0.0)),
+        "created_at": run.get("created_at"),
+        "completed_at": run.get("completed_at"),
+        "episodes": normalized_episodes,
+    }
+
+
+@app.get("/api/replays")
+def replay_catalog() -> list[dict]:
+    values = []
+    for run_id, path in _replay_files().items():
+        replay = _normalize_replay(json.loads(path.read_text(encoding="utf-8")))
+        values.append(
+            {
+                "id": run_id,
+                "model": replay["model"],
+                "score": replay["score"],
+                "status": replay["status"],
+                "episodes": len(replay["episodes"]),
+                "created_at": replay["created_at"],
+            }
+        )
+    return sorted(values, key=lambda value: str(value["created_at"]), reverse=True)
+
+
+@app.get("/api/replays/{run_id}")
+def replay_detail(run_id: str) -> dict:
+    path = _replay_files().get(run_id)
+    if path is None:
+        raise HTTPException(status_code=404, detail="replay not found")
+    return _normalize_replay(json.loads(path.read_text(encoding="utf-8")))
 
 @app.get("/api/settings")
 def get_settings() -> dict:

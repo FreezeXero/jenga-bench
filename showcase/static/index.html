@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/static/styles.css?v=18">
 </head>
 <body>
+  <span class="hidden">Live Tower Inspector</span>
 
   <header class="topbar">
     <div class="topbar-left">
@@ -251,42 +252,31 @@
 
   <!-- ═══ BENCHMARK ═══ -->
   <div class="tab-content" id="tab-benchmark">
-    <div class="results-layout">
-      <div class="results-main">
+    <div class="benchmark-subtabs">
+      <button class="benchmark-subtab active" onclick="showBenchmarkTab('replay', this)">Replay</button>
+      <button class="benchmark-subtab" onclick="showBenchmarkTab('comparison', this)">Comparison</button>
+    </div>
+    <div class="results-layout" id="benchmark-replay">
+      <div class="results-main replay-main">
         <div class="results-header">
           <div>
-            <div class="results-title">Model Leaderboard</div>
-            <div class="results-sub">Ranked by normalized score · Same tower seed for all models</div>
+            <div class="results-title">Recorded Benchmark Replay</div>
+            <div class="results-sub">Agent views and authoritative sampled physics from completed runs</div>
           </div>
           <div class="results-seed-info">Seed: <span class="mono highlight" id="results-seed">—</span></div>
         </div>
-
-        <div class="model-tabs" id="model-tabs"></div>
-        <div class="leaderboard" id="leaderboard"></div>
-
-        <!-- PER-STEP REPLAY -->
-        <div class="episode-section">
-          <div class="episode-header">
-            <span class="chip">Step Replay</span>
-            <div class="replay-nav">
-              <button class="btn btn-sm btn-outline" onclick="prevStep()">← Prev</button>
-              <span class="replay-counter mono" id="replay-counter">— / —</span>
-              <button class="btn btn-sm btn-outline" onclick="nextStep()">Next →</button>
-            </div>
-          </div>
-          <div class="step-timeline" id="step-timeline"></div>
-          <div class="step-detail" id="step-detail">
-            <div class="empty-state">Load demo data to see the replay</div>
-          </div>
+        <div class="replay-selectors">
+          <label class="form-label">Run <select class="form-input" id="replay-run-select" onchange="selectReplayRun(this.value)"></select></label>
+          <label class="form-label">Episode <select class="form-input" id="replay-episode-select" onchange="selectReplayEpisode(this.value)"></select></label>
         </div>
+        <div class="replay-warning hidden" id="replay-warning">Partial replay: this legacy export contains only its final recorded physics step.</div>
 
-        <!-- FULL GAME REPLAY -->
         <div class="full-replay-section">
           <div class="full-replay-header">
-            <span class="chip blue">Full Game Replay</span>
+            <span class="chip">Step Replay</span>
             <div class="replay-nav">
               <button class="btn btn-sm btn-outline" id="full-replay-play" onclick="toggleFullReplay()">▶ Play</button>
-              <span class="replay-step-info" id="full-replay-counter">— / —</span>
+              <span class="replay-step-info" id="full-replay-frame-counter">— frames</span>
               <select class="replay-speed" id="replay-speed-select" onchange="setReplaySpeed(this.value)">
                 <option value="1000">1×</option>
                 <option value="500">2×</option>
@@ -297,18 +287,19 @@
           <div class="full-replay-body">
             <div class="full-replay-viewer">
               <div class="full-replay-frame" id="full-replay-frame-main">
-                <div class="full-replay-no-frame">No frame data</div>
+                <canvas id="replay-canvas" width="620" height="620"></canvas>
+                <div class="full-replay-no-frame" id="full-replay-empty">Select a recorded step</div>
               </div>
-              <div id="full-replay-info" style="display:flex;flex-direction:column;gap:12px;justify-content:center;">
-                <div class="empty-state">Load demo data to start replay</div>
+              <div class="replay-detail" id="full-replay-info">
+                <div class="empty-state">Load replay data to begin</div>
               </div>
             </div>
+            <div class="step-timeline" id="step-timeline"></div>
             <div class="replay-controls">
-              <button class="btn btn-sm btn-ghost" onclick="fullReplayStep(-1)">←</button>
-              <div class="replay-progress" onclick="scrubReplay(event)">
-                <div class="replay-progress-fill" id="replay-progress-fill" style="width:0%"></div>
-              </div>
-              <button class="btn btn-sm btn-ghost" onclick="fullReplayStep(1)">→</button>
+              <button class="btn btn-sm btn-ghost" onclick="prevStep()">←</button>
+              <input class="replay-step-slider" id="replay-step-slider" type="range" min="0" max="0" value="0" step="1" oninput="showStep(Number(this.value))">
+              <span class="replay-counter mono" id="replay-counter">— / —</span>
+              <button class="btn btn-sm btn-ghost" onclick="nextStep()">→</button>
             </div>
           </div>
         </div>
@@ -316,19 +307,29 @@
 
       <div class="results-side">
         <div class="card">
+          <div class="card-header"><span class="chip">Run</span></div>
+          <div class="stat-grid">
+            <div class="stat-cell"><div class="stat-val highlight mono" id="stat-run-score">—</div><div class="stat-label">Score</div></div>
+            <div class="stat-cell"><div class="stat-val mono" id="stat-run-episodes">—</div><div class="stat-label">Episodes</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="results-layout hidden" id="benchmark-comparison">
+      <div class="results-main">
+        <div class="results-header">
+          <div><div class="results-title">Run Comparison</div><div class="results-sub">Bundled completed exports ranked by normalized score</div></div>
+        </div>
+        <div class="model-tabs" id="model-tabs"></div>
+        <div class="leaderboard" id="leaderboard"></div>
+      </div>
+      <div class="results-side">
+        <div class="card">
           <div class="card-header"><span class="chip">Overview</span></div>
           <div class="stat-grid">
             <div class="stat-cell"><div class="stat-val highlight mono" id="stat-top">—</div><div class="stat-label">Top score</div></div>
-            <div class="stat-cell"><div class="stat-val mono" id="stat-blocks">—</div><div class="stat-label">Max blocks</div></div>
             <div class="stat-cell"><div class="stat-val mono" id="stat-episodes">—</div><div class="stat-label">Episodes</div></div>
-            <div class="stat-cell"><div class="stat-val mono" id="stat-models">—</div><div class="stat-label">Models</div></div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header"><span class="chip">Data</span></div>
-          <div class="load-section">
-            <button class="btn btn-accent full-w" onclick="loadDemoResults()">Load demo data</button>
-            <div class="load-status" id="load-status">No data loaded</div>
+            <div class="stat-cell"><div class="stat-val mono" id="stat-models">—</div><div class="stat-label">Runs</div></div>
           </div>
         </div>
       </div>
@@ -426,6 +427,7 @@
     localStorage.setItem('theme', next);
     if (typeof loadGeometry === 'function' && typeof scene !== 'undefined' && scene) loadGeometry();
     if (typeof renderScene === 'function') renderScene();
+    if (typeof recordedRenderer !== 'undefined' && recordedRenderer.frame) recordedRenderer.setFrame(recordedRenderer.frame);
     requestAnimationFrame(() => root.style.removeProperty('--transition-override'));
   });
 
@@ -574,218 +576,224 @@
     document.getElementById('vs-dot').classList.toggle('ok', document.getElementById('status-dot').classList.contains('ok'));
   }).observe(document.getElementById('status-dot'), { attributes: true });
 
-  // ── RESULTS ──
-  const DEMO_DATA = {
-    seed: 42,
-    models: [
-      { name: "Claude Opus 4.7", score: 91.2, blocks: 16, episodes: 3, invalid: 1, color: "#e87b24",
-        steps: [
-          { step:1, type:"look", action:{type:"ChangeViewpoint",azimuth:180,pitch:15,distance_cm:45}, reasoning:"Assessing tower stability from south before committing to any push.", reward:0, terminated:false },
-          { step:2, type:"push", action:{type:"Push",layer:4,color:"Blue",face:"West",contact:"center",intensity:"Gentle"}, reasoning:"Layer 4 center block appears well-supported. Gentle west push should extract cleanly.", reward:0, terminated:false },
-          { step:3, type:"push", action:{type:"Push",layer:7,color:"Red",face:"East",contact:"right",intensity:"Firm"}, reasoning:"Layer 7 overhangs on the right. Right extraction redistributes load to remaining blocks.", reward:0, terminated:false },
-        ]
-      },
-      { name: "GPT-4o", score: 74.5, blocks: 12, episodes: 3, invalid: 4, color: "#5da8d6",
-        steps: [
-          { step:1, type:"push", action:{type:"Push",layer:8,color:"Green",face:"North",contact:"center",intensity:"Gentle"}, reasoning:"Starting with middle layer — lower structural risk.", reward:0, terminated:false },
-          { step:2, type:"push", action:{type:"Push",layer:3,color:"Red",face:"South",contact:"left",intensity:"Hard"}, reasoning:"Aggressive lower extraction attempt.", reward:-0.5, terminated:true },
-        ]
-      },
-      { name: "Gemini 1.5 Pro", score: 61.8, blocks: 9, episodes: 3, invalid: 6, color: "#3aba6e",
-        steps: [
-          { step:1, type:"look", action:{type:"ChangeViewpoint",azimuth:90,pitch:20,distance_cm:50}, reasoning:"Initial survey of east face.", reward:0, terminated:false },
-          { step:2, type:"push", action:{type:"Push",layer:5,color:"Blue",face:"East",contact:"center",intensity:"Gentle"}, reasoning:"Conservative center extraction on layer 5.", reward:0, terminated:false },
-        ]
-      },
-    ]
-  };
-
+  // ── RECORDED BENCHMARK REPLAY ──
+  let replayCatalog = [];
+  let activeReplay = null;
   let currentSteps = [];
   let currentStepIdx = 0;
+  let replayInitialFrame = null;
+  let replayCurrentFrame = null;
+  let replayFrameIdx = 0;
+  let fullReplayPlaying = false;
+  let fullReplaySpeed = 1;
+  let replayAnimation = null;
+  let replayLastTick = 0;
 
-  function renderResults(data) {
-    document.getElementById('results-seed').textContent = data.seed ?? '—';
-    const max = Math.max(...data.models.map(m => m.score));
-    document.getElementById('stat-top').textContent = max.toFixed(1);
-    document.getElementById('stat-blocks').textContent = Math.max(...data.models.map(m => m.blocks));
-    document.getElementById('stat-episodes').textContent = data.models[0]?.episodes ?? '—';
-    document.getElementById('stat-models').textContent = data.models.length;
-
-    const tabs = document.getElementById('model-tabs');
-    tabs.innerHTML = '';
-    data.models.forEach((m, i) => {
-      const btn = document.createElement('button');
-      btn.className = 'model-tab' + (i === 0 ? ' active' : '');
-      btn.style.setProperty('--model-color', m.color);
-      btn.innerHTML = `<span class="model-tab-dot"></span>${m.name}`;
-      btn.onclick = () => {
-        document.querySelectorAll('.model-tab').forEach(t => t.classList.remove('active'));
-        btn.classList.add('active');
-        loadModelSteps(data, i);
-      };
-      tabs.appendChild(btn);
-    });
-
-    renderLeaderboard(data);
-    loadModelSteps(data, 0);
-    document.getElementById('load-status').textContent = 'Data loaded';
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
   }
 
-  function renderLeaderboard(data) {
-    const lb = document.getElementById('leaderboard');
-    lb.innerHTML = '';
-    const max = Math.max(...data.models.map(m => m.score));
-    [...data.models].sort((a,b) => b.score - a.score).forEach((m, i) => {
-      const pct = Math.round(m.score / max * 100);
-      const row = document.createElement('div');
-      row.className = 'lb-row';
-      row.innerHTML = `
-        <div class="lb-rank">${i+1}</div>
-        <div class="lb-info">
-          <div class="lb-name"><div class="lb-dot" style="background:${m.color}"></div><span>${m.name}</span></div>
-          <div class="lb-bar-wrap"><div class="lb-bar" style="width:0%;background:${m.color}"></div></div>
-          <div class="lb-meta">${m.blocks} blocks · ${m.invalid} invalid · ${m.episodes} episodes</div>
-        </div>
-        <div class="lb-score-area">
-          <div class="lb-score">${m.score.toFixed(1)}</div>
-          <div class="lb-score-label">Score</div>
-        </div>
-      `;
-      lb.appendChild(row);
-      setTimeout(() => row.querySelector('.lb-bar').style.width = pct + '%', 60 + i * 100);
-    });
+  function actionType(step) {
+    return step.action?.type || (step.terminated ? 'Collapse' : 'Recorded');
   }
 
-  function loadModelSteps(data, idx) {
-    currentSteps = data.models[idx]?.steps || [];
-    currentStepIdx = 0;
-    renderTimeline();
-    if (currentSteps.length) showStep(0);
+  function cleanAction(action) {
+    const cleaned = { ...(action || {}) };
+    delete cleaned.context;
+    return cleaned;
+  }
+
+  class ReadOnlyReplayRenderer {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.gl = canvas.getContext('webgl', { alpha: false, antialias: true });
+      this.camera = { azimuth: 225, pitch: 15, distance_cm: 45 };
+      this.frame = null;
+      this.drag = null;
+      if (!this.gl) return;
+      this.lightDir = normalize([3,-4,6]);
+      this.positions = this.gl.createBuffer();
+      this.colors = this.gl.createBuffer();
+      this.normals = this.gl.createBuffer();
+      this.program = this.createMainProgram();
+      this.depthProgram = this.createDepthProgram();
+      this.shadow = this.createShadowFramebuffer();
+      this.vertexCount = 0;
+      canvas.addEventListener('pointerdown', e => { this.drag = { x:e.clientX, y:e.clientY }; canvas.setPointerCapture(e.pointerId); });
+      canvas.addEventListener('pointermove', e => {
+        if (!this.drag) return;
+        this.camera.azimuth = (this.camera.azimuth - (e.clientX-this.drag.x)*.55 + 360) % 360;
+        this.camera.pitch = Math.min(75, Math.max(-45, this.camera.pitch + (e.clientY-this.drag.y)*.4));
+        this.drag = { x:e.clientX, y:e.clientY }; this.render();
+      });
+      canvas.addEventListener('pointerup', () => { this.drag = null; });
+      canvas.addEventListener('pointercancel', () => { this.drag = null; });
+      canvas.addEventListener('wheel', e => {
+        e.preventDefault(); this.camera.distance_cm = Math.min(120, Math.max(20, this.camera.distance_cm + e.deltaY*.035)); this.render();
+      }, { passive:false });
+    }
+    shader(type, source) {
+      const shader=this.gl.createShader(type);this.gl.shaderSource(shader,source);this.gl.compileShader(shader);
+      if(!this.gl.getShaderParameter(shader,this.gl.COMPILE_STATUS))throw new Error(this.gl.getShaderInfoLog(shader));
+      return shader;
+    }
+    createMainProgram() {
+      const gl=this.gl,program=gl.createProgram();
+      gl.attachShader(program,this.shader(gl.VERTEX_SHADER,`attribute vec3 position;attribute vec3 color;attribute vec3 normal;uniform mat4 viewProjection;uniform mat4 lightMatrix;varying vec3 faceColor;varying vec3 faceNormal;varying vec4 shadowCoord;void main(){gl_Position=viewProjection*vec4(position,1.0);shadowCoord=lightMatrix*vec4(position,1.0);faceColor=color;faceNormal=normal;}`));
+      gl.attachShader(program,this.shader(gl.FRAGMENT_SHADER,`precision mediump float;varying vec3 faceColor;varying vec3 faceNormal;varying vec4 shadowCoord;uniform sampler2D shadowMap;uniform vec3 lightDir;void main(){vec3 sc=shadowCoord.xyz/shadowCoord.w*.5+.5;float shadow=1.0;if(sc.x>=0.0&&sc.x<=1.0&&sc.y>=0.0&&sc.y<=1.0){float bias=max(.03*(1.0-dot(faceNormal,lightDir)),.008);float closest=texture2D(shadowMap,sc.xy).r;shadow=sc.z-bias>closest?.4:1.0;}float diffuse=max(dot(faceNormal,lightDir),0.0)*.6*shadow;float specular=pow(max(dot(faceNormal,lightDir),0.0),16.0)*.05*shadow;gl_FragColor=vec4(faceColor*min(.7+diffuse,1.0)+vec3(specular),1.0);}`));
+      gl.linkProgram(program);return program;
+    }
+    createDepthProgram() {
+      const gl=this.gl,program=gl.createProgram();
+      gl.attachShader(program,this.shader(gl.VERTEX_SHADER,`attribute vec3 position;uniform mat4 lightMatrix;void main(){gl_Position=lightMatrix*vec4(position,1.0);}`));
+      gl.attachShader(program,this.shader(gl.FRAGMENT_SHADER,`precision mediump float;void main(){gl_FragColor=vec4(gl_FragCoord.z,0.0,0.0,1.0);}`));
+      gl.linkProgram(program);return program;
+    }
+    createShadowFramebuffer() {
+      const gl=this.gl;if(!gl.getExtension('WEBGL_depth_texture'))return null;
+      const framebuffer=gl.createFramebuffer(),depthTexture=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,depthTexture);
+      gl.texImage2D(gl.TEXTURE_2D,0,gl.DEPTH_COMPONENT,2048,2048,0,gl.DEPTH_COMPONENT,gl.UNSIGNED_INT,null);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.NEAREST);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+      gl.bindFramebuffer(gl.FRAMEBUFFER,framebuffer);gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.TEXTURE_2D,depthTexture,0);
+      const color=gl.createTexture();gl.bindTexture(gl.TEXTURE_2D,color);gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,2048,2048,0,gl.RGBA,gl.UNSIGNED_BYTE,null);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER,gl.COLOR_ATTACHMENT0,gl.TEXTURE_2D,color,0);gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+      return {framebuffer,depthTexture};
+    }
+    addBox(box, positions, colors, normals) {
+      const [cx,cy,cz]=box.position, [sx,sy,sz]=box.size.map(v=>v/2), q=box.rotation||[0,0,0,1];
+      const v=[[-sx,-sy,-sz],[sx,-sy,-sz],[sx,sy,-sz],[-sx,sy,-sz],[-sx,-sy,sz],[sx,-sy,sz],[sx,sy,sz],[-sx,sy,sz]]
+        .map(p=>rotate(p,q).map((n,i)=>n+[cx,cy,cz][i]));
+      const faces=[[0,3,2,1],[4,5,6,7],[0,1,5,4],[1,2,6,5],[2,3,7,6],[3,0,4,7]];
+      const faceNormals=[[0,0,-1],[0,0,1],[0,-1,0],[1,0,0],[0,1,0],[-1,0,0]].map(n=>rotate(n,q));
+      const rgb=box.color.map(n=>n/255);
+      faces.forEach((face,faceIndex)=>[0,1,2,0,2,3].forEach(i=>{positions.push(...v[face[i]]);colors.push(...rgb);normals.push(...faceNormals[faceIndex]);}));
+    }
+    lightMatrix() {
+      const target=[0,0,.135],lightPos=target.map((v,i)=>v+this.lightDir[i]*.8);
+      return multiply(ortho(.5,.01,2),lookAt(lightPos,target));
+    }
+    bindPositions(program) {
+      const gl=this.gl,pos=gl.getAttribLocation(program,'position');gl.bindBuffer(gl.ARRAY_BUFFER,this.positions);
+      gl.vertexAttribPointer(pos,3,gl.FLOAT,false,0,0);gl.enableVertexAttribArray(pos);
+    }
+    setFrame(frame) {
+      this.frame=frame;if(!frame?.blocks?.length)return;
+      const positions=[],colors=[],normals=[],isDark=document.documentElement.getAttribute('data-theme')!=='light';
+      this.addBox({position:[0,0,-.05],size:[.8,.8,.01],color:isDark?[72,55,38]:[195,175,145]},positions,colors,normals);
+      this.addBox({position:[0,0,-.0225],size:[.25,.25,.045],color:isDark?[30,24,18]:[160,140,115]},positions,colors,normals);
+      frame.blocks.forEach(block=>this.addBox(block,positions,colors,normals));this.vertexCount=positions.length/3;
+      const gl=this.gl;gl.bindBuffer(gl.ARRAY_BUFFER,this.positions);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(positions),gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER,this.colors);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(colors),gl.STATIC_DRAW);
+      gl.bindBuffer(gl.ARRAY_BUFFER,this.normals);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(normals),gl.STATIC_DRAW);this.render();
+    }
+    render() {
+      if(!this.gl||!this.frame?.blocks?.length)return;const gl=this.gl,lm=this.lightMatrix();
+      const yaw=this.camera.azimuth*Math.PI/180,pitch=this.camera.pitch*Math.PI/180,d=this.camera.distance_cm/100,target=[0,0,.135];
+      const eye=[target[0]+Math.cos(pitch)*Math.sin(yaw)*d,target[1]-Math.cos(pitch)*Math.cos(yaw)*d,target[2]+Math.sin(pitch)*d];
+      const vp=multiply(perspective(52,this.canvas.width/this.canvas.height,.02,3),lookAt(eye,target));gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);
+      if(this.shadow){gl.bindFramebuffer(gl.FRAMEBUFFER,this.shadow.framebuffer);gl.viewport(0,0,2048,2048);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);gl.useProgram(this.depthProgram);gl.uniformMatrix4fv(gl.getUniformLocation(this.depthProgram,'lightMatrix'),false,lm);this.bindPositions(this.depthProgram);gl.drawArrays(gl.TRIANGLES,0,this.vertexCount);gl.bindFramebuffer(gl.FRAMEBUFFER,null);}
+      gl.viewport(0,0,this.canvas.width,this.canvas.height);document.documentElement.getAttribute('data-theme')!=='light'?gl.clearColor(.08,.06,.05,1):gl.clearColor(.94,.91,.85,1);gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+      gl.useProgram(this.program);gl.uniformMatrix4fv(gl.getUniformLocation(this.program,'viewProjection'),false,vp);gl.uniformMatrix4fv(gl.getUniformLocation(this.program,'lightMatrix'),false,lm);gl.uniform3fv(gl.getUniformLocation(this.program,'lightDir'),this.lightDir);
+      if(this.shadow){gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,this.shadow.depthTexture);gl.uniform1i(gl.getUniformLocation(this.program,'shadowMap'),0);}
+      this.bindPositions(this.program);const color=gl.getAttribLocation(this.program,'color');gl.bindBuffer(gl.ARRAY_BUFFER,this.colors);gl.vertexAttribPointer(color,3,gl.FLOAT,false,0,0);gl.enableVertexAttribArray(color);
+      const normal=gl.getAttribLocation(this.program,'normal');gl.bindBuffer(gl.ARRAY_BUFFER,this.normals);gl.vertexAttribPointer(normal,3,gl.FLOAT,false,0,0);gl.enableVertexAttribArray(normal);gl.drawArrays(gl.TRIANGLES,0,this.vertexCount);
+    }
+  }
+  const recordedRenderer = new ReadOnlyReplayRenderer(document.getElementById('replay-canvas'));
+
+  function showBenchmarkTab(name, btn) {
+    document.querySelectorAll('.benchmark-subtab').forEach(tab=>tab.classList.remove('active')); btn.classList.add('active');
+    document.getElementById('benchmark-replay').classList.toggle('hidden', name!=='replay');
+    document.getElementById('benchmark-comparison').classList.toggle('hidden', name!=='comparison');
+    if (name==='replay') recordedRenderer.render();
+  }
+
+  async function loadReplayCatalog() {
+    replayCatalog = await fetch('/api/replays').then(r=>r.json());
+    const select=document.getElementById('replay-run-select'); select.replaceChildren();
+    replayCatalog.forEach(run=>{const option=new Option(`${run.model} · ${run.id.slice(0,8)}`,run.id);select.add(option);});
+    renderComparison();
+    if (replayCatalog.length) await selectReplayRun(replayCatalog[0].id);
+  }
+
+  async function selectReplayRun(id) {
+    if (!id) return;
+    activeReplay=await fetch(`/api/replays/${encodeURIComponent(id)}`).then(r=>r.json());
+    document.getElementById('replay-run-select').value=id;
+    document.getElementById('stat-run-score').textContent=activeReplay.score.toFixed(2);
+    document.getElementById('stat-run-episodes').textContent=activeReplay.episodes.length;
+    const select=document.getElementById('replay-episode-select');select.replaceChildren();
+    activeReplay.episodes.forEach((episode,index)=>select.add(new Option(`Episode ${index+1} · ${episode.status}`,String(index))));
+    selectReplayEpisode('0');
+  }
+
+  function selectReplayEpisode(value) {
+    const episode=activeReplay?.episodes[Number(value)]; if(!episode)return;
+    document.getElementById('results-seed').textContent=episode.seed ?? '—';
+    document.getElementById('replay-warning').classList.toggle('hidden',episode.completeness!=='partial');
+    currentSteps=episode.steps||[];currentStepIdx=0;replayFrameIdx=0;replayInitialFrame=episode.initial_frame;replayCurrentFrame=episode.initial_frame;
+    const slider=document.getElementById('replay-step-slider');slider.max=String(Math.max(currentSteps.length-1,0));slider.value='0';
+    renderTimeline();if(currentSteps.length)showStep(0);
   }
 
   function renderTimeline() {
-    const tl = document.getElementById('step-timeline');
-    tl.innerHTML = '';
-    currentSteps.forEach((s, i) => {
-      const el = document.createElement('button');
-      el.className = 'step-pill' + (s.type==='look'?' look':s.terminated?' fail':' push') + (i===currentStepIdx?' active':'');
-      el.innerHTML = (s.type==='look'?'&#128065;':'&#128070;') + ` ${s.step}`;
-      el.onclick = () => showStep(i);
-      tl.appendChild(el);
+    const timeline=document.getElementById('step-timeline');timeline.replaceChildren();
+    currentSteps.forEach((step,index)=>{
+      const type=actionType(step), unavailable=step.recording_status==='unavailable',button=el('button','step-pill'+(unavailable?' unavailable':type==='ChangeViewpoint'?' look':step.terminated?' fail':' push'),`${unavailable?'?':type==='ChangeViewpoint'?'◉':'↟'} ${step.step}`);
+      if(index===currentStepIdx)button.classList.add('active');button.onclick=()=>showStep(index);timeline.appendChild(button);
     });
-    document.getElementById('replay-counter').textContent = currentSteps.length ? `${currentStepIdx+1} / ${currentSteps.length}` : '— / —';
+    document.getElementById('replay-counter').textContent=currentSteps.length?`${currentStepIdx+1} / ${currentSteps.length}`:'— / —';
   }
 
-  function showStep(idx) {
-    currentStepIdx = idx;
-    const s = currentSteps[idx];
-    const detail = document.getElementById('step-detail');
-    const typeLabel = s.type==='look'?'LOOK':s.terminated?'COLLAPSE':'PUSH';
-    const typeClass = s.type==='look'?'blue':s.terminated?'red':'';
-    const rewardStr = s.reward>0?`+${s.reward.toFixed(1)}`:s.reward<0?s.reward.toFixed(1):'0';
-    const rewardClass = s.reward>0?'green':s.reward<0?'red':'';
-    const frameHTML = s.frame
-      ? `<img src="${s.frame.startsWith('data:') ? s.frame : 'data:image/png;base64,'+s.frame}" alt="AI view">`
-      : `<div class="step-frame-placeholder">No frame</div>`;
-
-    detail.innerHTML = `
-      <div class="step-detail-inner">
-        <div class="step-frame-col">
-          <div class="step-frame">${frameHTML}</div>
-          <div class="step-frame-label">AI view · step ${s.step}</div>
-        </div>
-        <div class="step-info-col">
-          <div class="step-detail-header">
-            <span class="chip ${typeClass}">${typeLabel}</span>
-            <span class="step-detail-title">Step ${s.step} of ${currentSteps.length}</span>
-            <span class="reward-tag ${rewardClass}">${rewardStr} pts</span>
-          </div>
-          <div class="step-reasoning">${s.reasoning}</div>
-          <pre class="step-action">${JSON.stringify(s.action, null, 2)}</pre>
-          ${s.terminated?'<div class="step-terminated">Episode terminated</div>':''}
-        </div>
-      </div>
-    `;
-    renderTimeline();
-    updateFullReplay(idx);
+  function makeStepInfo(step) {
+    const wrap=el('div','replay-detail-inner'),header=el('div','step-detail-header');
+    if(step.recording_status==='unavailable'){wrap.append(el('div','replay-unavailable','Replay data unavailable for this legacy step.'));return wrap;}
+    const capture=el('div','replay-capture'),frame=el('div','step-frame');
+    if(step.agent_frame){const img=el('img');img.alt='AI view';img.src=step.agent_frame.startsWith('data:')?step.agent_frame:`data:image/png;base64,${step.agent_frame}`;frame.append(img);}
+    else frame.append(el('div','step-frame-placeholder','No captured AI frame'));
+    capture.append(frame,el('div','step-frame-label',`AI view · step ${step.step}`));wrap.append(capture);
+    const type=actionType(step), chip=el('span','chip '+(type==='ChangeViewpoint'?'blue':step.terminated?'red':''),type.toUpperCase());
+    header.append(chip,el('span','step-detail-title',`Step ${step.step}`),el('span','reward-tag '+(step.reward<0?'red':step.reward>0?'green':''),`${step.reward>0?'+':''}${Number(step.reward).toFixed(1)} pts`));
+    wrap.append(header,el('div','step-reasoning',step.context||'No recorded context.'));
+    wrap.append(el('pre','step-action',JSON.stringify(cleanAction(step.action),null,2)));
+    if(step.terminated)wrap.append(el('div','step-terminated','Episode terminated'));
+    return wrap;
   }
 
-  function prevStep() { if (currentStepIdx > 0) showStep(currentStepIdx - 1); }
-  function nextStep() { if (currentStepIdx < currentSteps.length - 1) showStep(currentStepIdx + 1); }
-  function loadDemoResults() { renderResults(DEMO_DATA); }
-
-  // ── FULL GAME REPLAY ──
-  let fullReplayPlaying = false;
-  let fullReplayTimer = null;
-  let fullReplaySpeed = 1000;
-
-  function updateFullReplay(idx) {
-    const s = currentSteps[idx];
-    if (!s) return;
-    const total = currentSteps.length;
-    document.getElementById('full-replay-counter').textContent = `${idx+1} / ${total}`;
-    document.getElementById('replay-progress-fill').style.width = `${((idx+1)/total)*100}%`;
-
-    const frame = document.getElementById('full-replay-frame-main');
-    const info = document.getElementById('full-replay-info');
-
-    if (s.frame) {
-      const src = s.frame.startsWith('data:') ? s.frame : 'data:image/png;base64,'+s.frame;
-      frame.innerHTML = `<img src="${src}" alt="frame"><div class="full-replay-frame-label">Step ${s.step} · ${s.type.toUpperCase()}</div>`;
-    } else {
-      frame.innerHTML = `<div class="full-replay-no-frame">Step ${s.step} · ${s.type.toUpperCase()}</div>`;
-    }
-
-    const typeClass = s.type==='look'?'blue':s.terminated?'red':'';
-    const rewardStr = s.reward>0?`+${s.reward.toFixed(1)}`:s.reward<0?s.reward.toFixed(1):'0';
-    info.innerHTML = `
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-        <span class="chip ${typeClass}">${s.type.toUpperCase()}</span>
-        <span style="font-size:13px;font-weight:700;color:var(--text)">Step ${s.step}</span>
-        <span class="reward-tag ${s.reward<0?'red':s.reward>0?'green':''}">${rewardStr} pts</span>
-      </div>
-      <div class="step-reasoning" style="font-size:12px;">${s.reasoning}</div>
-      <pre class="step-action" style="font-size:10px;">${JSON.stringify(s.action, null, 2)}</pre>
-      ${s.terminated ? '<div class="step-terminated">Episode terminated</div>' : ''}
-    `;
+  function showStep(index) {
+    if(!currentSteps.length)return;stopStepPlayback();currentStepIdx=Math.max(0,Math.min(currentSteps.length-1,index));const step=currentSteps[currentStepIdx];
+    document.getElementById('replay-step-slider').value=String(currentStepIdx);document.getElementById('full-replay-info').replaceChildren(makeStepInfo(step));renderTimeline();
+    const frames=framesForStep(step);if(step.recording_status==='unavailable'||!frames.length){document.getElementById('full-replay-empty').classList.remove('hidden');document.getElementById('full-replay-frame-counter').textContent='— frames';return;}
+    document.getElementById('full-replay-empty').classList.add('hidden');replayFrameIdx=0;replayCurrentFrame=cloneReplayFrame(frames[0]);recordedRenderer.setFrame(replayCurrentFrame);updateFrameCounter(frames);if(frames.length>1)startStepPlayback();
   }
+  function prevStep(){if(currentStepIdx>0)showStep(currentStepIdx-1);}
+  function nextStep(){if(currentStepIdx<currentSteps.length-1)showStep(currentStepIdx+1);}
 
-  function toggleFullReplay() {
-    fullReplayPlaying = !fullReplayPlaying;
-    document.getElementById('full-replay-play').textContent = fullReplayPlaying ? '⏸ Pause' : '▶ Play';
-    if (fullReplayPlaying) tickFullReplay();
-    else clearTimeout(fullReplayTimer);
+  function framesForStep(step){if(step.recording_status==='unavailable')return[];if(step.physics_frames?.length)return step.physics_frames;if(step.tower_state?.length)return[{blocks:step.tower_state,phase:'recorded'}];if(replayInitialFrame?.blocks?.length)return[replayInitialFrame];return[];}
+  function cloneReplayFrame(frame){return{...frame,blocks:(frame.blocks||[]).map(block=>({...block,position:[...block.position],rotation:[...(block.rotation||[0,0,0,1])]}))};}
+  function updateFrameCounter(frames){document.getElementById('full-replay-frame-counter').textContent=`${Math.min(replayFrameIdx+1,frames.length)} / ${frames.length} frames`;document.getElementById('replay-counter').textContent=`${currentStepIdx+1} / ${currentSteps.length}`;}
+  function stopStepPlayback(){fullReplayPlaying=false;if(replayAnimation)cancelAnimationFrame(replayAnimation);replayAnimation=null;document.getElementById('full-replay-play').textContent='▶ Play';}
+  function startStepPlayback(){const frames=framesForStep(currentSteps[currentStepIdx]);if(frames.length<2)return;fullReplayPlaying=true;replayLastTick=0;document.getElementById('full-replay-play').textContent='Ⅱ Pause';replayAnimation=requestAnimationFrame(tickFullReplay);}
+  function applyReplayFrame(target){if(!replayCurrentFrame){replayCurrentFrame=cloneReplayFrame(target);recordedRenderer.setFrame(replayCurrentFrame);return;}const existing=new Map(replayCurrentFrame.blocks.map(block=>[block.id,block]));replayCurrentFrame={...target,blocks:target.blocks.map(block=>existing.get(block.id)||cloneReplayFrame({blocks:[block]}).blocks[0])};const starts=new Map(replayCurrentFrame.blocks.map(block=>[block.id,{position:[...block.position],rotation:[...(block.rotation||[0,0,0,1])]}]));const began=performance.now();function animate(now){const amount=Math.min(1,(now-began)/(1000/30));replayCurrentFrame.blocks.forEach(block=>{const from=starts.get(block.id),to=target.blocks.find(item=>item.id===block.id);block.position=from.position.map((value,i)=>value+amount*(to.position[i]-value));block.rotation=slerp(from.rotation,to.rotation,amount);if(to.color)block.color=to.color;if(to.size)block.size=to.size;});recordedRenderer.setFrame(replayCurrentFrame);if(amount<1)requestAnimationFrame(animate);}requestAnimationFrame(animate);}
+  function toggleFullReplay(){if(fullReplayPlaying){stopStepPlayback();return;}const frames=framesForStep(currentSteps[currentStepIdx]||{});if(frames.length){replayFrameIdx=0;replayCurrentFrame=cloneReplayFrame(frames[0]);recordedRenderer.setFrame(replayCurrentFrame);updateFrameCounter(frames);startStepPlayback();}}
+  function tickFullReplay(now){if(!fullReplayPlaying)return;const frames=framesForStep(currentSteps[currentStepIdx]);if(!replayLastTick||now-replayLastTick>=1000/30/fullReplaySpeed){replayLastTick=now;if(replayFrameIdx>=frames.length-1){stopStepPlayback();return;}replayFrameIdx+=1;applyReplayFrame(frames[replayFrameIdx]);updateFrameCounter(frames);}replayAnimation=requestAnimationFrame(tickFullReplay);}
+  function setReplaySpeed(val){fullReplaySpeed=1000/Number(val);}
+
+  function renderComparison() {
+    const tabs=document.getElementById('model-tabs'),lb=document.getElementById('leaderboard');tabs.replaceChildren();lb.replaceChildren();
+    const max=Math.max(0,...replayCatalog.map(run=>run.score));document.getElementById('stat-top').textContent=max.toFixed(2);
+    document.getElementById('stat-models').textContent=replayCatalog.length;document.getElementById('stat-episodes').textContent=replayCatalog.reduce((n,run)=>n+run.episodes,0);
+    [...replayCatalog].sort((a,b)=>b.score-a.score).forEach((run,index)=>{
+      const tab=el('button','model-tab',run.model);tab.onclick=()=>selectReplayRun(run.id);tabs.append(tab);
+      const row=el('div','lb-row');row.append(el('div','lb-rank',String(index+1)));
+      const info=el('div','lb-info');info.append(el('div','lb-name',run.model),el('div','lb-meta',`${run.episodes} episode${run.episodes===1?'':'s'} · ${run.id.slice(0,8)}`));row.append(info,el('div','lb-score',run.score.toFixed(2)));lb.append(row);
+    });
   }
-
-  function tickFullReplay() {
-    if (!fullReplayPlaying) return;
-    if (currentStepIdx < currentSteps.length - 1) {
-      showStep(currentStepIdx + 1);
-      fullReplayTimer = setTimeout(tickFullReplay, fullReplaySpeed);
-    } else {
-      fullReplayPlaying = false;
-      document.getElementById('full-replay-play').textContent = '▶ Play';
-    }
-  }
-
-  function fullReplayStep(dir) {
-    const next = currentStepIdx + dir;
-    if (next >= 0 && next < currentSteps.length) showStep(next);
-  }
-
-  function setReplaySpeed(val) { fullReplaySpeed = Number(val); }
-
-  function scrubReplay(e) {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    const idx = Math.round(pct * (currentSteps.length - 1));
-    showStep(Math.max(0, Math.min(currentSteps.length - 1, idx)));
-  }
-
-  fetch('/static/results.json')
-    .then(r => r.ok ? r.json() : null)
-    .then(data => { if (data) renderResults(data); })
-    .catch(() => {});
+  loadReplayCatalog().catch(error=>console.error('replay catalog error',error));
 
 
   // ── SETTINGS ──
