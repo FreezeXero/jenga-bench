@@ -9,8 +9,8 @@
 body{font-family:system-ui,sans-serif;background:#141214;color:#e0ddd8;min-height:100vh;padding:24px}
 .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
 h1{font-size:18px;font-weight:700;color:#e8721a}
-h1 span{color:#888;font-weight:400}
-.drop-zone{border:2px dashed #333;border-radius:10px;padding:32px;text-align:center;color:#666;cursor:pointer;margin-bottom:20px;transition:border-color .15s}
+h1 span{color:#999;font-weight:400}
+.drop-zone{border:2px dashed #444;border-radius:10px;padding:32px;text-align:center;color:#888;cursor:pointer;margin-bottom:20px;transition:border-color .15s}
 .drop-zone:hover,.drop-zone.over{border-color:#e8721a;color:#e8721a}
 .drop-zone input{display:none}
 .runs{display:flex;flex-direction:column;gap:20px}
@@ -18,7 +18,7 @@ h1 span{color:#888;font-weight:400}
 .run-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #2a282c;cursor:pointer}
 .run-header:hover{background:#222}
 .run-model{font-size:15px;font-weight:700;color:#e8721a}
-.run-meta{font-size:12px;color:#777;display:flex;gap:14px}
+.run-meta{font-size:12px;color:#999;display:flex;gap:14px}
 .run-meta span{display:flex;align-items:center;gap:4px}
 .run-body{padding:16px 18px}
 .stats{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
@@ -27,7 +27,7 @@ h1 span{color:#888;font-weight:400}
 .stat-val.neg{color:#e05555}
 .stat-val.pos{color:#55b87a}
 .stat-val.orange{color:#e8721a}
-.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-top:2px}
+.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#888;margin-top:2px}
 .episodes{display:flex;flex-direction:column;gap:12px}
 .episode{background:#1a181c;border:1px solid #2a282c;border-radius:8px;padding:14px 16px}
 .ep-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
@@ -35,24 +35,59 @@ h1 span{color:#888;font-weight:400}
 .badge.collapse{background:#3a1515;color:#e05555}
 .badge.completed{background:#153a1f;color:#55b87a}
 .badge.running{background:#3a3015;color:#e8a830}
-.ep-id{font-size:11px;color:#555;font-family:monospace}
+.ep-id{font-size:11px;color:#777;font-family:monospace}
 .ep-stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
-.ep-stat{font-size:12px;color:#888}
-.ep-stat b{color:#ccc;font-weight:600}
-.context{background:#111;border-left:3px solid #e8721a;padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;line-height:1.6;color:#aaa;margin-top:10px;white-space:pre-wrap;word-break:break-word}
+.ep-stat{font-size:12px;color:#bbb}
+.ep-stat b{color:#e0ddd8;font-weight:600}
+.context{background:#1a181c;border-left:3px solid #e8721a;padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;line-height:1.6;color:#ccc;margin-top:10px;white-space:pre-wrap;word-break:break-word}
 .events{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
-.event-tag{font-size:11px;padding:3px 8px;border-radius:4px;background:#2a282c;color:#ccc}
+.event-tag{font-size:11px;padding:3px 8px;border-radius:4px;background:#2a282c;color:#ddd}
 .event-tag.push_collapse{background:#3a1515;color:#e05555}
-.remove-btn{font-size:11px;color:#555;background:none;border:1px solid #333;border-radius:5px;padding:3px 10px;cursor:pointer}
+.remove-btn{font-size:11px;color:#888;background:none;border:1px solid #444;border-radius:5px;padding:3px 10px;cursor:pointer}
 .remove-btn:hover{color:#e05555;border-color:#e05555}
-.empty{text-align:center;color:#444;padding:40px;font-size:14px}
+.empty{text-align:center;color:#666;padding:40px;font-size:14px}
+
+.step-log{margin-top:14px;border-top:1px solid #2a282c;padding-top:12px}
+.step-log-toggle{font-size:12px;font-weight:600;color:#ccc;cursor:pointer;user-select:none;display:flex;align-items:center;gap:6px;margin-bottom:10px}
+.step-log-toggle:hover{color:#e8721a}
+.step-log-toggle .arrow{transition:transform .15s;display:inline-block}
+.step-log-toggle .arrow.open{transform:rotate(90deg)}
+.step-list{display:flex;flex-direction:column;gap:6px}
+
+.step-card{background:#161416;border:1px solid #252325;border-radius:8px;padding:10px 12px;transition:border-color .1s}
+.step-card:hover{border-color:#383638}
+.step-card.step-invalid{border-left:3px solid #e05555}
+.step-card.step-extracted{border-left:3px solid #55b87a}
+.step-card.step-collapse{border-left:3px solid #e05555;background:#1a1214}
+
+.step-top{display:flex;align-items:center;gap:8px;margin-bottom:4px;flex-wrap:wrap}
+.step-num{font-size:11px;color:#777;font-weight:700;font-variant-numeric:tabular-nums;min-width:20px}
+.step-type-badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:4px}
+.step-type-badge.t-ChangeViewpoint{background:#162a3a;color:#6ab4e8}
+.step-type-badge.t-Push{background:#3a2510;color:#e8a050}
+.step-type-badge.t-PlaceBack{background:#2a1a3a;color:#c090e8}
+.step-type-badge.t-unknown{background:#2a282c;color:#aaa}
+.step-params{font-size:12px;color:#ccc;font-family:monospace}
+.step-reward-badge{font-size:11px;font-weight:700;padding:2px 7px;border-radius:4px;margin-left:auto;font-variant-numeric:tabular-nums}
+.step-reward-badge.neg{background:#3a1515;color:#e05555}
+.step-reward-badge.pos{background:#153a1f;color:#55b87a}
+.step-reward-badge.zero{background:#1e1c20;color:#777}
+
+.step-event-row{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px}
+.step-evt{font-size:10px;padding:2px 6px;border-radius:3px;font-weight:600}
+.step-evt.evt-ok{background:#1a2a1a;color:#70c080}
+.step-evt.evt-err{background:#3a1515;color:#e07070}
+.step-evt.evt-end{background:#3a2020;color:#e05555}
+.step-evt.evt-neutral{background:#252325;color:#bbb}
+
+.step-context-text{font-size:12px;color:#bbb;line-height:1.5;margin-top:6px;padding:6px 8px;background:#111;border-radius:4px;word-break:break-word}
 </style>
 </head>
 <body>
 
 <div class="header">
   <h1>JengaBench <span>Data Viewer</span></h1>
-  <span style="font-size:12px;color:#555" id="count"></span>
+  <span style="font-size:12px;color:#888" id="count"></span>
 </div>
 
 <div class="drop-zone" id="drop">
@@ -90,15 +125,8 @@ function jsonVal(v, fallback) {
   return v ?? fallback;
 }
 
-function addRun(data) {
-  runs.push(data);
-  render();
-}
-
-function removeRun(i) {
-  runs.splice(i, 1);
-  render();
-}
+function addRun(data) { runs.push(data); render(); }
+function removeRun(i) { runs.splice(i, 1); render(); }
 
 function render() {
   countEl.textContent = runs.length ? runs.length + ' run' + (runs.length > 1 ? 's' : '') : '';
@@ -161,7 +189,63 @@ function renderEpisode(ep, i) {
       <span class="ep-stat">Tokens <b>${ti.total_tokens?.toLocaleString() ?? '—'}</b></span>
     </div>
     ${events.length ? '<div class="events">' + events.map(e => `<span class="event-tag ${esc(e)}">${esc(e)}</span>`).join('') + '</div>' : ''}
-    ${ti.latest_context ? '<div class="context">' + esc(ti.latest_context) + '</div>' : ''}
+    ${renderStepLog(ti)}
+  </div>`;
+}
+
+function renderStepLog(ti) {
+  const replay = jsonVal(ti.episode_replay, null);
+  if (!replay || !replay.steps || !replay.steps.length) return '';
+  const steps = replay.steps;
+  const id = 'sl-' + Math.random().toString(36).slice(2, 8);
+  return `<div class="step-log">
+    <div class="step-log-toggle" onclick="var b=document.getElementById('${id}');var a=this.querySelector('.arrow');if(b.style.display==='none'){b.style.display='';a.classList.add('open');}else{b.style.display='none';a.classList.remove('open');}">
+      <span class="arrow">&#9654;</span> Step Log <span style="color:#888;font-weight:400">(${steps.length} steps)</span>
+    </div>
+    <div class="step-list" id="${id}" style="display:none">${steps.map(s => renderStep(s)).join('')}</div>
+  </div>`;
+}
+
+function classifyEvent(e) {
+  if (e.startsWith('invalid_action')) return 'evt-err';
+  if (e === 'push_collapse' || e === 'extraction_timeout' || e === 'viewpoint_timeout') return 'evt-end';
+  if (e === 'push_extracted') return 'evt-ok';
+  if (e === 'push_settled' || e === 'viewpoint_changed' || e === 'place_back_placed') return 'evt-ok';
+  return 'evt-neutral';
+}
+
+function stepCardClass(s) {
+  const evts = (s.events || []);
+  if (evts.some(e => e.startsWith('invalid_action'))) return 'step-invalid';
+  if (evts.some(e => e === 'push_extracted')) return 'step-extracted';
+  if (evts.some(e => e === 'push_collapse')) return 'step-collapse';
+  return '';
+}
+
+function renderStep(s) {
+  const a = s.action || {};
+  const type = a.type || '?';
+  const r = s.reward || 0;
+  const evts = (s.events || []).filter(e => e);
+  const typeClass = ['Push','ChangeViewpoint','PlaceBack'].includes(type) ? 't-' + type : 't-unknown';
+
+  let params = '';
+  if (type === 'Push') params = `L${a.layer} ${a.color} ${a.face} ${a.contact} ${a.intensity}`;
+  else if (type === 'ChangeViewpoint') params = `${a.direction} L${a.elevation_layer} ${a.distance}`;
+  else if (type === 'PlaceBack') params = a.position || '';
+
+  const rClass = r < 0 ? 'neg' : r > 0 ? 'pos' : 'zero';
+  const rText = r > 0 ? '+' + r.toFixed(1) : r.toFixed(1);
+
+  return `<div class="step-card ${stepCardClass(s)}">
+    <div class="step-top">
+      <span class="step-num">${s.step}</span>
+      <span class="step-type-badge ${typeClass}">${esc(type)}</span>
+      <span class="step-params">${esc(params)}</span>
+      <span class="step-reward-badge ${rClass}">${rText}</span>
+    </div>
+    ${evts.length ? '<div class="step-event-row">' + evts.map(e => `<span class="step-evt ${classifyEvent(e)}">${esc(e)}</span>`).join('') + '</div>' : ''}
+    ${a.context ? '<div class="step-context-text">' + esc(a.context) + '</div>' : ''}
   </div>`;
 }
 

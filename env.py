@@ -288,7 +288,7 @@ class JengaBenchEnv(BaseEnv):
             '"elevation_layer":1..18,"distance":"Close|Medium|Full",'
             '"target_block":{"layer":int,"color":"Blue|Green|Red"}} or '
             '{"type":"Push","context":"brief rationale","layer":"1..one below current top layer","color":"Blue|Green|Red",'
-            '"face":"North|South|East|West","contact":"center|left|right",'
+            '"face":"North|South (odd layers) or East|West (even layers)","contact":"center|left|right",'
             '"intensity":"Gentle|Firm|Hard"} or '
             '{"type":"PlaceBack","context":"brief rationale","position":"<one of available_placement_positions>"}. '
             f"Camera: direction={self._camera.direction}, "
@@ -298,6 +298,8 @@ class JengaBenchEnv(BaseEnv):
             f"Successful extractions: {self._successful_extractions}. "
             f"Moves remaining before the next successful extraction must happen: {self._moves_until_extraction}. "
             f"Push layer range: 1..{self._simulation.max_push_layer if self._simulation is not None else 17}. "
+            "Block orientation: odd layers (1,3,5,...) run North-South so push faces are North or South; "
+            "even layers (2,4,6,...) run East-West so push faces are East or West. "
             f"Available placement positions: {', '.join(self._available_placement_positions()) or 'none'}. "
             f"Last 5 contexts (oldest to newest): {context_history}. "
             "Only a fully extracted block resets the move countdown to 10; changing viewpoint, placing back, "
