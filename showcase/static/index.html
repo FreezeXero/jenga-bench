@@ -7,7 +7,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700;900&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/styles.css?v=19">
+  <link rel="stylesheet" href="/static/styles.css?v=20">
 </head>
 <body>
   <span class="hidden">Live Tower Inspector</span>
@@ -252,7 +252,7 @@
       <button class="benchmark-subtab active" onclick="showBenchmarkTab('replay', this)">Replay</button>
       <button class="benchmark-subtab" onclick="showBenchmarkTab('comparison', this)">Comparison</button>
     </div>
-    <div id="benchmark-replay" style="padding: 0 24px;">
+    <div id="benchmark-replay" class="benchmark-replay-layout">
       <div class="replay-bar">
         <select class="form-input replay-bar-select" id="replay-run-select" onchange="selectReplayRun(this.value)"></select>
         <select class="form-input replay-bar-select" id="replay-episode-select" onchange="selectReplayEpisode(this.value)"></select>
@@ -579,14 +579,14 @@
     return currentSteps.slice(0,index+1).reduce((score,step)=>score+Number(step.reward||0),0);
   }
 
-  function timelineIcon(type, unavailable, collapsed) {
+  function timelineIcon(type, unavailable) {
     if(unavailable)return el('span','step-card-symbol','?');
-    if(collapsed)return el('span','step-card-symbol','💥');
     const wrap=el('div','step-card-icon');
     const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 80 80');
     const use=document.createElementNS('http://www.w3.org/2000/svg','use');
     const symbol=type==='ChangeViewpoint'?'icon-camera':type==='PlaceBack'?'icon-place':'icon-push';
-    use.setAttribute('href',`/static/icons.svg#${symbol}`);use.setAttributeNS('http://www.w3.org/1999/xlink','xlink:href',`/static/icons.svg#${symbol}`);icon.append(use);wrap.append(icon);return wrap;
+    use.setAttribute('href',`/static/icons.svg#${symbol}`);use.setAttributeNS('http://www.w3.org/1999/xlink','xlink:href',`/static/icons.svg#${symbol}`);icon.append(use);wrap.append(icon);
+    return wrap;
   }
 
   function cleanAction(action) {
@@ -754,15 +754,23 @@
   function renderTimeline() {
     const timeline=document.getElementById('step-timeline');timeline.replaceChildren();
     currentSteps.forEach((step,index)=>{
-      const type=actionType(step), unavailable=step.recording_status==='unavailable', collapsed=isCollapse(step), failed=collapsed||step.terminated;
+      const type=actionType(step), unavailable=step.recording_status==='unavailable', collapsed=isCollapse(step);
       const label=type==='ChangeViewpoint'?'Look':type==='PlaceBack'?'Place':'Push';
       const actionClass=type==='ChangeViewpoint'?' look':type==='PlaceBack'?' place':' push';
-      const card=el('button','step-card'+(unavailable?' unavailable':failed?' fail':actionClass)+(index===currentStepIdx?' active':''));
-      card.append(timelineIcon(type,unavailable,collapsed));
+      const card=el('button','step-card'+actionClass+(index===currentStepIdx?' active':''));
+      card.append(timelineIcon(type,unavailable,false));
       card.append(el('span','step-card-label',label));
-      if(Number(step.reward)){card.append(el('span','step-card-reward '+(step.reward>0?'positive':'negative'),(step.reward>0?'+':'')+Number(step.reward).toFixed(1)));}
+      if(Number(step.reward)&&!collapsed){card.append(el('span','step-card-reward '+(step.reward>0?'positive':'negative'),(step.reward>0?'+':'')+Number(step.reward).toFixed(1)));}
       card.onclick=()=>showStep(index);
       timeline.appendChild(card);
+      if(collapsed){
+        const boom=el('button','step-card fail'+(index===currentStepIdx?' active':''));
+        boom.append(el('span','step-card-symbol','💥'));
+        boom.append(el('span','step-card-label','Collapse'));
+        if(Number(step.reward)){boom.append(el('span','step-card-reward negative',Number(step.reward).toFixed(1)));}
+        boom.onclick=()=>showStep(index);
+        timeline.appendChild(boom);
+      }
     });
   }
 

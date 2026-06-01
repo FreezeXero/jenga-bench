@@ -145,7 +145,7 @@ class JengaBenchEnv(BaseEnv):
                 contact=action.get("contact"),
                 intensity=action.get("intensity"),
             )
-            push_result = self._simulation.push(request)
+            push_result = self._simulation.push(request, continue_after_collapse=True)
             self._active_physics_frames = list(push_result.frames)
         except PushValidationError as exc:
             self._raw_points += INVALID_ACTION_PENALTY
@@ -183,7 +183,7 @@ class JengaBenchEnv(BaseEnv):
             request = PlaceRequest(
                 position=action.get("position"),
             )
-            place_result = self._simulation.place_back(request)
+            place_result = self._simulation.place_back(request, continue_after_collapse=True)
             self._active_physics_frames = list(place_result.frames)
         except PlaceValidationError as exc:
             self._raw_points += INVALID_ACTION_PENALTY

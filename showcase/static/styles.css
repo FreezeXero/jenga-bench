@@ -685,7 +685,27 @@ body {
 
 .replay-counter { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--subtext); min-width: 48px; text-align: center; }
 
-.step-timeline { display: flex; gap: 2px; overflow-x: auto; padding: 4px 0 0; margin-bottom: 14px; scrollbar-width: thin; }
+.benchmark-replay-layout {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 54px - 41px);
+  padding: 0 24px;
+}
+.benchmark-replay-layout .full-replay-viewer { flex: 1; min-height: 0; }
+
+.step-timeline {
+  display: flex;
+  gap: 2px;
+  overflow-x: auto;
+  padding: 4px 12px;
+  flex-shrink: 0;
+  background: var(--base-high);
+  border-top: 1px solid var(--surface-higher);
+  scrollbar-width: thin;
+  margin: 0 -24px;
+  padding-left: 24px;
+  padding-right: 24px;
+}
 
 .step-card {
   flex-shrink: 0;
@@ -704,9 +724,9 @@ body {
 }
 .step-card:hover { color: var(--text); }
 
-.step-card-icon { width: 56px; height: 56px; color: var(--text); }
+.step-card-icon { position: relative; width: 72px; height: 72px; color: var(--text); }
 .step-card-icon svg { width: 100%; height: 100%; }
-.step-card-symbol { display: grid; place-items: center; width: 56px; height: 56px; font-size: 26px; }
+.step-card-symbol { display: grid; place-items: center; width: 72px; height: 72px; font-size: 30px; }
 .step-card-label {
   font-size: 9px;
   font-weight: 700;
