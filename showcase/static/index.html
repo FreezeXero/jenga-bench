@@ -252,73 +252,35 @@
       <button class="benchmark-subtab active" onclick="showBenchmarkTab('replay', this)">Replay</button>
       <button class="benchmark-subtab" onclick="showBenchmarkTab('comparison', this)">Comparison</button>
     </div>
-    <div class="results-layout" id="benchmark-replay">
-      <div class="results-main replay-main">
-        <div class="results-header">
-          <div>
-            <div class="results-title">Recorded Benchmark Replay</div>
-            <div class="results-sub">Agent views and authoritative sampled physics from completed runs</div>
-          </div>
-          <div class="results-seed-info">Seed: <span class="mono highlight" id="results-seed">—</span></div>
-        </div>
-        <div class="replay-selectors">
-          <label class="form-label">Run <select class="form-input" id="replay-run-select" onchange="selectReplayRun(this.value)"></select></label>
-          <label class="form-label">Episode <select class="form-input" id="replay-episode-select" onchange="selectReplayEpisode(this.value)"></select></label>
-        </div>
-        <div class="replay-warning hidden" id="replay-warning">Partial replay: this legacy export contains only its final recorded physics step.</div>
+    <div id="benchmark-replay" style="padding: 0 24px;">
+      <div class="replay-bar">
+        <select class="form-input replay-bar-select" id="replay-run-select" onchange="selectReplayRun(this.value)"></select>
+        <select class="form-input replay-bar-select" id="replay-episode-select" onchange="selectReplayEpisode(this.value)"></select>
+        <span class="replay-bar-stat"><strong class="mono" id="stat-run-score">—</strong> score</span>
+        <span class="replay-bar-stat"><strong class="mono" id="stat-run-episodes">—</strong> ep</span>
+        <div style="flex:1"></div>
+        <button class="btn btn-sm btn-outline" id="full-replay-play" onclick="toggleFullReplay()">▶ Play</button>
+        <span class="replay-step-info mono" id="full-replay-frame-counter">— frames</span>
+        <select class="replay-speed" id="replay-speed-select" onchange="setReplaySpeed(this.value)">
+          <option value="0.25">0.25×</option>
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+        </select>
+      </div>
+      <div class="replay-warning hidden" id="replay-warning"></div>
 
-        <div class="full-replay-section">
-          <div class="full-replay-header">
-            <span class="chip">Step Replay</span>
-            <div class="replay-nav">
-              <span class="replay-score">Score <strong class="mono" id="replay-live-score">0.0</strong></span>
-              <button class="btn btn-sm btn-outline" id="full-replay-play" onclick="toggleFullReplay()">▶ Play</button>
-              <span class="replay-step-info" id="full-replay-frame-counter">— frames</span>
-              <select class="replay-speed" id="replay-speed-select" onchange="setReplaySpeed(this.value)">
-                <option value="0.25">0.25×</option>
-                <option value="0.5">0.5×</option>
-                <option value="1" selected>1×</option>
-                <option value="2">2×</option>
-              </select>
-            </div>
-          </div>
-          <div class="full-replay-body">
-            <div class="full-replay-viewer">
-              <section class="replay-panel projection-panel">
-                <div class="replay-panel-title">Playable Projection</div>
-                <div class="full-replay-frame" id="full-replay-frame-main">
-                  <canvas id="replay-canvas" width="620" height="620"></canvas>
-                  <div class="full-replay-no-frame" id="full-replay-empty">Select a recorded step</div>
-                </div>
-              </section>
-              <section class="replay-panel state-panel">
-                <div class="replay-panel-title">AI Step State</div>
-                <div class="replay-detail" id="full-replay-info">
-                  <div class="empty-state">Load replay data to begin</div>
-                </div>
-              </section>
-            </div>
-            <div class="step-timeline" id="step-timeline"></div>
-            <div class="replay-controls">
-              <button class="btn btn-sm btn-ghost" onclick="prevStep()">←</button>
-              <input class="replay-step-slider" id="replay-step-slider" type="range" min="0" max="0" value="0" step="1" oninput="showStep(Number(this.value))">
-              <span class="replay-counter mono" id="replay-counter">— / —</span>
-              <button class="btn btn-sm btn-ghost" onclick="nextStep()">→</button>
-            </div>
-          </div>
+      <div class="full-replay-viewer">
+        <div class="full-replay-frame" id="full-replay-frame-main">
+          <canvas id="replay-canvas" width="620" height="620"></canvas>
+          <div class="full-replay-no-frame" id="full-replay-empty">Select a recorded step</div>
+        </div>
+        <div class="replay-detail" id="full-replay-info">
+          <div class="empty-state">Load replay data to begin</div>
         </div>
       </div>
 
-      <div class="results-side">
-        <div class="card">
-          <div class="card-header"><span class="chip">Run</span></div>
-          <div class="stat-grid">
-            <div class="stat-cell"><div class="stat-val highlight mono" id="stat-run-score">—</div><div class="stat-label">Score</div></div>
-            <div class="stat-cell"><div class="stat-val mono" id="stat-run-episodes">—</div><div class="stat-label">Episodes</div></div>
-            <div class="stat-cell"><div class="stat-val mono" id="stat-run-extractions">—</div><div class="stat-label">Extracted Blocks</div></div>
-          </div>
-        </div>
-      </div>
+      <div class="step-timeline" id="step-timeline"></div>
     </div>
     <div class="results-layout hidden" id="benchmark-comparison">
       <div class="results-main">
@@ -618,12 +580,13 @@
   }
 
   function timelineIcon(type, unavailable, collapsed) {
-    if(unavailable)return el('span','step-pill-symbol','?');
-    if(collapsed)return el('span','step-pill-symbol collapse-icon','💥');
-    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('class','step-pill-icon');icon.setAttribute('viewBox','0 0 80 80');
+    if(unavailable)return el('span','step-card-symbol','?');
+    if(collapsed)return el('span','step-card-symbol','💥');
+    const wrap=el('div','step-card-icon');
+    const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');icon.setAttribute('viewBox','0 0 80 80');
     const use=document.createElementNS('http://www.w3.org/2000/svg','use');
     const symbol=type==='ChangeViewpoint'?'icon-camera':type==='PlaceBack'?'icon-place':'icon-push';
-    use.setAttribute('href',`/static/icons.svg#${symbol}`);use.setAttributeNS('http://www.w3.org/1999/xlink','xlink:href',`/static/icons.svg#${symbol}`);icon.append(use);return icon;
+    use.setAttribute('href',`/static/icons.svg#${symbol}`);use.setAttributeNS('http://www.w3.org/1999/xlink','xlink:href',`/static/icons.svg#${symbol}`);icon.append(use);wrap.append(icon);return wrap;
   }
 
   function cleanAction(action) {
@@ -776,7 +739,6 @@
     document.getElementById('replay-run-select').value=id;
     document.getElementById('stat-run-score').textContent=activeReplay.score.toFixed(2);
     document.getElementById('stat-run-episodes').textContent=activeReplay.episodes.length;
-    document.getElementById('stat-run-extractions').textContent=activeReplay.successful_extractions;
     const select=document.getElementById('replay-episode-select');select.replaceChildren();
     activeReplay.episodes.forEach((episode,index)=>select.add(new Option(`Episode ${index+1} · ${episode.status}`,String(index))));
     selectReplayEpisode('0');
@@ -784,23 +746,24 @@
 
   function selectReplayEpisode(value) {
     const episode=activeReplay?.episodes[Number(value)]; if(!episode)return;
-    document.getElementById('results-seed').textContent=episode.seed ?? '—';
-    document.getElementById('replay-warning').classList.toggle('hidden',episode.completeness!=='partial');
-    currentSteps=episode.steps||[];currentStepIdx=0;replayFrameIdx=0;replayBlockSizes=new Map();replayInitialFrame=hydrateReplayFrame(episode.initial_frame);replayCurrentFrame=replayInitialFrame;document.getElementById('replay-live-score').textContent='0.0';
-    const slider=document.getElementById('replay-step-slider');slider.max=String(Math.max(currentSteps.length-1,0));slider.value='0';
+    document.getElementById('replay-warning').classList.add('hidden');
+    currentSteps=episode.steps||[];currentStepIdx=0;replayFrameIdx=0;replayBlockSizes=new Map();replayInitialFrame=hydrateReplayFrame(episode.initial_frame);replayCurrentFrame=replayInitialFrame;
     renderTimeline();if(currentSteps.length)showStep(0);
   }
 
   function renderTimeline() {
     const timeline=document.getElementById('step-timeline');timeline.replaceChildren();
     currentSteps.forEach((step,index)=>{
-      const type=actionType(step), unavailable=step.recording_status==='unavailable', collapsed=isCollapse(step), failed=collapsed||step.terminated, actionClass=type==='ChangeViewpoint'?' look':type==='PlaceBack'?' place':' push', item=el('div','step-timeline-item'), button=el('button','step-pill'+(unavailable?' unavailable':failed?' fail':actionClass));
-      button.append(timelineIcon(type,unavailable,collapsed),el('span','step-pill-number',String(step.step)));
-      if(Number(step.reward))item.append(el('span','step-pill-reward '+(step.reward>0?'positive':'negative'),`${step.reward>0?'+':''}${Number(step.reward).toFixed(1)}`));
-      else item.append(el('span','step-pill-reward-placeholder'));
-      if(index===currentStepIdx)button.classList.add('active');button.onclick=()=>showStep(index);item.append(button);timeline.appendChild(item);
+      const type=actionType(step), unavailable=step.recording_status==='unavailable', collapsed=isCollapse(step), failed=collapsed||step.terminated;
+      const label=type==='ChangeViewpoint'?'Look':type==='PlaceBack'?'Place':'Push';
+      const actionClass=type==='ChangeViewpoint'?' look':type==='PlaceBack'?' place':' push';
+      const card=el('button','step-card'+(unavailable?' unavailable':failed?' fail':actionClass)+(index===currentStepIdx?' active':''));
+      card.append(timelineIcon(type,unavailable,collapsed));
+      card.append(el('span','step-card-label',label));
+      if(Number(step.reward)){card.append(el('span','step-card-reward '+(step.reward>0?'positive':'negative'),(step.reward>0?'+':'')+Number(step.reward).toFixed(1)));}
+      card.onclick=()=>showStep(index);
+      timeline.appendChild(card);
     });
-    document.getElementById('replay-counter').textContent=currentSteps.length?`${currentStepIdx+1} / ${currentSteps.length}`:'— / —';
   }
 
   function makeStepInfo(step) {
@@ -809,7 +772,7 @@
     const capture=el('div','replay-capture'),frame=el('div','step-frame');
     if(step.agent_frame){const img=el('img');img.alt='AI view';img.src=step.agent_frame.startsWith('data:')?step.agent_frame:`data:image/png;base64,${step.agent_frame}`;frame.append(img);}
     else frame.append(el('div','step-frame-placeholder','No captured AI frame'));
-    capture.append(frame,el('div','step-frame-label',`AI view · step ${step.step}`));wrap.append(capture);
+    capture.append(frame,el('div','step-frame-label','AI view'));wrap.append(capture);
     const type=actionType(step), chip=el('span','chip '+(type==='ChangeViewpoint'?'blue':step.terminated?'red':''),type.toUpperCase());
     header.append(chip,el('span','step-detail-title',`Step ${step.step}`),el('span','reward-tag '+(step.reward<0?'red':step.reward>0?'green':''),`${step.reward>0?'+':''}${Number(step.reward).toFixed(1)} pts`));
     if(step.see||step.do||step.next){const r=el('div','step-reasoning');const e=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML;};r.innerHTML='<b style="color:#6ab4e8">SEE:</b> '+e(step.see||'')+'<br><b style="color:#e8a050">DO:</b> '+e(step.do||'')+'<br><b style="color:#b07adb">NEXT:</b> '+e(step.next||'');wrap.append(header,r);}
@@ -821,7 +784,7 @@
 
   function showStep(index) {
     if(!currentSteps.length)return;stopStepPlayback();currentStepIdx=Math.max(0,Math.min(currentSteps.length-1,index));const step=currentSteps[currentStepIdx];
-    document.getElementById('replay-step-slider').value=String(currentStepIdx);document.getElementById('replay-live-score').textContent=cumulativeScore(currentStepIdx).toFixed(1);document.getElementById('full-replay-info').replaceChildren(makeStepInfo(step));renderTimeline();
+    document.getElementById('full-replay-info').replaceChildren(makeStepInfo(step));renderTimeline();
     const frames=framesForStep(step);if(step.recording_status==='unavailable'||!frames.length){document.getElementById('full-replay-empty').classList.remove('hidden');document.getElementById('full-replay-frame-counter').textContent='— frames';return;}
     document.getElementById('full-replay-empty').classList.add('hidden');replayFrameIdx=0;replayCurrentFrame=cloneReplayFrame(frames[0]);recordedRenderer.setFrame(replayCurrentFrame);updateFrameCounter(frames);if(frames.length>1)startStepPlayback();
   }
@@ -830,7 +793,7 @@
 
   function framesForStep(step){if(step.recording_status==='unavailable')return[];const type=actionType(step),staticObservation=type==='ChangeViewpoint'||(step.events||[]).some(event=>String(event).startsWith('invalid_action:'));if(!staticObservation&&step.physics_frames?.length)return step.physics_frames.map(hydrateReplayFrame);if(step.tower_state?.length)return[hydrateReplayFrame({blocks:step.tower_state,phase:'recorded'})];if(replayInitialFrame?.blocks?.length)return[replayInitialFrame];return[];}
   function cloneReplayFrame(frame){const hydrated=hydrateReplayFrame(frame);return{...hydrated,blocks:(hydrated.blocks||[]).map(block=>({...block,position:[...block.position],rotation:[...(block.rotation||[0,0,0,1])],size:[...block.size]}))};}
-  function updateFrameCounter(frames){document.getElementById('full-replay-frame-counter').textContent=`${Math.min(replayFrameIdx+1,frames.length)} / ${frames.length} frames`;document.getElementById('replay-counter').textContent=`${currentStepIdx+1} / ${currentSteps.length}`;}
+  function updateFrameCounter(frames){document.getElementById('full-replay-frame-counter').textContent=`${Math.min(replayFrameIdx+1,frames.length)} / ${frames.length} frames`;}
   function stopStepPlayback(){fullReplayPlaying=false;if(replayAnimation)cancelAnimationFrame(replayAnimation);replayAnimation=null;document.getElementById('full-replay-play').textContent='▶ Play';}
   function startStepPlayback(){const frames=framesForStep(currentSteps[currentStepIdx]);if(frames.length<2)return;fullReplayPlaying=true;replayLastTick=0;document.getElementById('full-replay-play').textContent='Ⅱ Pause';replayAnimation=requestAnimationFrame(tickFullReplay);}
   function applyReplayFrame(target){if(!replayCurrentFrame){replayCurrentFrame=cloneReplayFrame(target);recordedRenderer.setFrame(replayCurrentFrame);return;}const existing=new Map(replayCurrentFrame.blocks.map(block=>[block.id,block]));replayCurrentFrame={...target,blocks:target.blocks.map(block=>existing.get(block.id)||cloneReplayFrame({blocks:[block]}).blocks[0])};const starts=new Map(replayCurrentFrame.blocks.map(block=>[block.id,{position:[...block.position],rotation:[...(block.rotation||[0,0,0,1])]}]));const began=performance.now();function animate(now){const amount=Math.min(1,(now-began)/(1000/30));replayCurrentFrame.blocks.forEach(block=>{const from=starts.get(block.id),to=target.blocks.find(item=>item.id===block.id);block.position=from.position.map((value,i)=>value+amount*(to.position[i]-value));block.rotation=slerp(from.rotation,to.rotation,amount);if(to.color)block.color=to.color;if(to.size)block.size=to.size;});recordedRenderer.setFrame(replayCurrentFrame);if(amount<1)requestAnimationFrame(animate);}requestAnimationFrame(animate);}

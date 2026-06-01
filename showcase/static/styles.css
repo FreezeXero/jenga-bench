@@ -685,40 +685,52 @@ body {
 
 .replay-counter { font-variant-numeric: tabular-nums; font-size: 12px; color: var(--subtext); min-width: 48px; text-align: center; }
 
-.step-timeline { display: flex; gap: 5px; overflow-x: auto; padding: 3px 0 8px 3px; margin-bottom: 14px; scrollbar-width: thin; }
-.step-timeline-item { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+.step-timeline { display: flex; gap: 2px; overflow-x: auto; padding: 4px 0 0; margin-bottom: 14px; scrollbar-width: thin; }
 
-.step-pill {
+.step-card {
   flex-shrink: 0;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 5px;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 7px 13px;
-  border-radius: 8px;
-  border: 1px solid var(--surface-highest);
-  background: var(--base);
-  color: var(--subtext);
+  gap: 2px;
+  padding: 6px 10px 0;
+  border: none;
+  border-bottom: 3px solid transparent;
+  background: transparent;
+  color: var(--muted);
   cursor: pointer;
   transition: all 0.12s;
+  min-width: 48px;
 }
+.step-card:hover { color: var(--text); }
 
-.step-pill-icon { width: 28px; height: 28px; }
-.step-pill-symbol { display: grid; place-items: center; width: 28px; height: 28px; font-size: 17px; }
-.collapse-icon { font-size: 20px; }
-.step-pill-number { min-width: 10px; }
-.step-pill-reward, .step-pill-reward-placeholder { min-height: 16px; }
-.step-pill-reward { padding: 2px 5px; border-radius: 99px; font-size: 10px; line-height: 12px; }
-.step-pill-reward.positive { background: oklch(from var(--fg-green) l c h / 0.16); color: var(--fg-green); }
-.step-pill-reward.negative { background: oklch(from var(--fg-red) l c h / 0.12); color: var(--fg-red); }
+.step-card-icon { width: 56px; height: 56px; color: var(--text); }
+.step-card-icon svg { width: 100%; height: 100%; }
+.step-card-symbol { display: grid; place-items: center; width: 56px; height: 56px; font-size: 26px; }
+.step-card-label {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding-bottom: 4px;
+}
+.step-card-reward {
+  font-size: 9px;
+  font-weight: 700;
+  padding-bottom: 2px;
+}
+.step-card-reward.positive { color: var(--fg-green); }
+.step-card-reward.negative { color: var(--fg-red); }
 
-.step-pill.push { border-color: oklch(from var(--fg-red) l c h / 0.55); color: var(--fg-red); background: oklch(from var(--fg-red) l c h / 0.09); }
-.step-pill.look { border-color: var(--rg-accent-2); color: var(--fg-accent-2); background: var(--bg-accent-2); }
-.step-pill.place { border-color: var(--rg-accent); color: var(--fg-accent); background: var(--bg-accent); }
-.step-pill.fail { border-color: oklch(from var(--fg-red) calc(l - 0.08) calc(c * 0.72) h); color: #fff; background: oklch(from var(--fg-red) calc(l - 0.12) calc(c * 0.58) h / 0.72); box-shadow: 0 0 0 2px oklch(from var(--fg-red) l c h / 0.14); }
-.step-pill.unavailable { color: var(--muted); border-style: dashed; background: var(--surface-low); }
-.step-pill.active { outline: 2px solid var(--fg-accent); outline-offset: 1px; }
+.step-card.push { border-bottom-color: transparent; }
+.step-card.push:hover, .step-card.push.active { border-bottom-color: var(--fg-accent); }
+.step-card.look { border-bottom-color: transparent; }
+.step-card.look:hover, .step-card.look.active { border-bottom-color: var(--fg-accent-2); }
+.step-card.place { border-bottom-color: transparent; }
+.step-card.place:hover, .step-card.place.active { border-bottom-color: var(--fg-green); }
+.step-card.fail { color: var(--fg-red); }
+.step-card.fail:hover, .step-card.fail.active { border-bottom-color: var(--fg-red); }
+.step-card.active { color: var(--text); }
 
 .step-frame {
   width: 100%;
@@ -786,25 +798,29 @@ body {
 
 .benchmark-subtabs {
   display: flex;
-  gap: 8px;
-  padding: 18px 24px 0;
+  gap: 0;
+  padding: 0 24px;
+  border-bottom: 1px solid var(--surface-higher);
 }
 
 .benchmark-subtab {
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--muted);
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--subtext);
   cursor: pointer;
   font: inherit;
   font-size: 13px;
-  font-weight: 700;
-  padding: 9px 16px;
+  font-weight: 600;
+  padding: 14px 16px 12px;
+  margin-bottom: -1px;
+  transition: all 0.15s;
 }
 
+.benchmark-subtab:hover { color: var(--text); }
 .benchmark-subtab.active {
-  border-color: var(--accent);
-  color: var(--text);
+  color: var(--fg-accent);
+  border-bottom-color: var(--fg-accent);
 }
 
 .replay-selectors {
@@ -832,15 +848,22 @@ body {
 }
 
 /* ════════════════════════════
+   REPLAY BAR
+════════════════════════════ */
+.replay-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  flex-wrap: wrap;
+}
+.replay-bar-select { max-width: 240px; font-size: 12px; }
+.replay-bar-stat { font-size: 12px; color: var(--muted); }
+.replay-bar-stat strong { color: var(--fg-accent); font-size: 14px; margin-right: 2px; }
+
+/* ════════════════════════════
    STEP REPLAY
 ════════════════════════════ */
-.full-replay-section {
-  background: var(--base);
-  border: 1px solid var(--surface-higher);
-  border-radius: 12px;
-  overflow: hidden;
-  margin-bottom: 32px;
-}
 
 .full-replay-header {
   display: flex;
@@ -856,7 +879,8 @@ body {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(300px, .8fr);
   gap: 0;
-  margin-bottom: 16px;
+  margin: 14px;
+  background: var(--surface-low);
   border: 1px solid var(--surface-higher);
   border-radius: 10px;
   overflow: hidden;
