@@ -42,6 +42,7 @@ class JengaBenchEnv(BaseEnv):
         self._termination_reason = ""
         self._seed: int | None = None
         self._simulation: JengaSimulation | None = None
+        self._action_log: list[dict[str, str]] = []
 
     def reset(self, seed: int | None = None, **params: Any) -> dict[str, Any]:
         del params
@@ -54,6 +55,7 @@ class JengaBenchEnv(BaseEnv):
         self._successful_extractions = 0
         self._terminated = False
         self._termination_reason = ""
+        self._action_log = []
         self._seed = seed
         self._simulation = JengaSimulation()
         try:
@@ -69,6 +71,7 @@ class JengaBenchEnv(BaseEnv):
 
     def step(self, action: Any) -> StepResult:
         if self._terminated:
+            self._log_action(action, "invalid_action: episode already terminated")
             return self._result(
                 reward=INVALID_ACTION_PENALTY,
                 event="invalid_action: episode already terminated",
@@ -82,6 +85,7 @@ class JengaBenchEnv(BaseEnv):
         error = self._validate_change_viewpoint(action)
         if error is not None:
             self._raw_points += INVALID_ACTION_PENALTY
+            self._log_action(action, f"invalid_action: {error}")
             return self._result(
                 reward=INVALID_ACTION_PENALTY,
                 event=f"invalid_action: {error}",
@@ -106,6 +110,7 @@ class JengaBenchEnv(BaseEnv):
             self._termination_reason = "viewpoint_timeout"
             event = "viewpoint_timeout"
 
+        self._log_action(action, event)
         return self._result(reward=reward, event=event)
 
     def _step_push(self, action: dict[str, Any]) -> StepResult:
@@ -124,6 +129,7 @@ class JengaBenchEnv(BaseEnv):
             push_result = self._simulation.push(request)
         except PushValidationError as exc:
             self._raw_points += INVALID_ACTION_PENALTY
+            self._log_action(action, f"invalid_action: {exc}")
             return self._result(reward=INVALID_ACTION_PENALTY, event=f"invalid_action: {exc}")
 
         self._consecutive_viewpoints = 0
@@ -136,7 +142,9 @@ class JengaBenchEnv(BaseEnv):
         self._termination_reason = push_result.outcome if self._terminated else ""
         if self._successful_extractions >= PERFECT_RAW_SCORE:
             self._termination_reason = "perfect_completion"
-        return self._result(reward=reward, event=f"push_{push_result.outcome}")
+        event = f"push_{push_result.outcome}"
+        self._log_action(action, event)
+        return self._result(reward=reward, event=event)
 
     def _step_place_back(self, action: dict[str, Any]) -> StepResult:
         if self._simulation is None:
@@ -150,17 +158,30 @@ class JengaBenchEnv(BaseEnv):
             place_result = self._simulation.place_back(request)
         except PlaceValidationError as exc:
             self._raw_points += INVALID_ACTION_PENALTY
+            self._log_action(action, f"invalid_action: {exc}")
             return self._result(reward=INVALID_ACTION_PENALTY, event=f"invalid_action: {exc}")
 
         self._consecutive_viewpoints = 0
         self._terminated = place_result.outcome == "collapse"
         self._termination_reason = place_result.outcome if self._terminated else ""
-        return self._result(reward=0.0, event=f"place_back_{place_result.outcome}")
+        event = f"place_back_{place_result.outcome}"
+        self._log_action(action, event)
+        return self._result(reward=0.0, event=event)
 
     def render(self, mode: str = "rgb_array") -> Any:
         if mode in ("rgb_array", "png"):
             return self._render_png()
         return self._camera_info()
+
+    def _log_action(self, action: Any, event: str) -> None:
+        saw = (
+            f"direction={self._camera.direction}, "
+            f"elevation_layer={self._camera.elevation_layer}, "
+            f"distance={self._camera.distance}"
+        )
+        did = json.dumps(action) if isinstance(action, dict) else str(action)
+        self._action_log.insert(0, {"saw": saw, "did": did, "why": event})
+        self._action_log = self._action_log[:5]
 
     def close(self) -> None:
         if self._simulation is not None:
@@ -177,6 +198,7 @@ class JengaBenchEnv(BaseEnv):
             "camera_state": json.dumps(self._camera_info(), sort_keys=True),
             "events": json.dumps([event]),
             "termination_reason": self._termination_reason,
+            "action_log": json.dumps(self._action_log),
         }
         if self._simulation is not None:
             info["outcome"] = self._last_outcome()
@@ -215,7 +237,8 @@ class JengaBenchEnv(BaseEnv):
             f"Successful extractions: {self._successful_extractions}. "
             f"Push layer range: 1..{self._simulation.max_push_layer if self._simulation is not None else 17}. "
             f"Available placement positions: {', '.join(self._available_placement_positions()) or 'none'}. "
-            "The tenth consecutive viewpoint terminates the episode with a -10 point penalty."
+            "The tenth consecutive viewpoint terminates the episode with a -10 point penalty. "
+            f"Action log (most recent first): {json.dumps(self._action_log) if self._action_log else 'empty'}."
         )
 
     def _camera_info(self) -> dict[str, Any]:

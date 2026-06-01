@@ -115,8 +115,23 @@ pinned Docker runtime.
 The agent-facing observation payload is the rendered PNG only. The environment
 reports non-privileged metadata through the observation's `system_prompt`:
 camera pose, removal count, available placement slots, current phase, and the
-last five action outcomes. Replay-only state stays in string-valued `info`
-fields and is not shown to the model.
+action log. Replay-only state stays in string-valued `info` fields and is not
+shown to the model.
+
+#### Action Log
+
+The environment maintains a windowed log of the last 5 action entries (most
+recent first). The log is empty on the first observation from `reset`. Each
+entry contains three fields:
+
+| Field | Description                                                        |
+|-------|--------------------------------------------------------------------|
+| saw   | what the agent observed before acting (camera state, key details)  |
+| did   | the action taken (type + parameters)                               |
+| why   | the agent's reasoning or annotation for the action                 |
+
+The log is included in the `system_prompt` so the agent can reason about recent
+history, and exported as a JSON string in `info["action_log"]` for replay.
 
 #### Render
 
@@ -241,4 +256,4 @@ The showcase is a Three.js replay viewer. Not authoritative — driven entirely 
 | Sound effects   | impact sounds on block collisions, extraction, collapse     |
 | 3D playback     | full tower replay with timeline scrubbing                   |
 | Camera replay   | replay the agent's camera movements                         |
-| AI reasoning    | display Mesocosm-exported model reasoning per step          |
+| AI reasoning    | display annotation (saw/did/why) per step                   |
