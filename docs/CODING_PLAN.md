@@ -15,8 +15,9 @@
 jenga-bench/
 ├── env.py              # BaseEnv subclass — reset() and step()
 ├── adapter.py          # HTTP wrapper (provided by bench_common)
-├── benchanything.json   # manifest
 ├── requirements.txt
+├── auxiliary/
+│   └── benchanything.json   # manifest
 ├── jenga/
 │   ├── sim.py          # PyBullet tower setup, physics stepping, settling
 │   ├── tower.py        # tower/block/layer definitions, block ID scheme
@@ -164,9 +165,8 @@ Every step exports to info (as JSON strings per Mesocosm requirement):
 - Successful extraction: +1 raw point
 - Invalid action: -0.5 raw points
 - Collapse: terminate and preserve accumulated raw points
-- 10 consecutive ChangeViewpoint actions without Push or PlaceBack: terminate
-  and subtract 10 raw points
-- Reset the viewpoint counter after Push or PlaceBack
+- 10 turns without a successful extraction: terminate and subtract 10 raw points
+- Reset the countdown only after a successful extraction
 - Perfect completion: 98 extractions
 - Leaderboard score: `round(raw_points / 98 * 100, 2)`, including negatives
 
@@ -178,8 +178,8 @@ Update from scaffold to match Jenga:
 |------------------------|--------------------------------------|
 | id                     | jenga-bench                          |
 | observation_space.type | image                                |
-| action_space.type      | json                                 |
-| reward.range           | { low: -10.0, high: 1.0 }           |
+| action_space.type      | json wrapper with `context` + nested `action` |
+| reward.range           | { low: -10.5, high: 1.0 }           |
 | episode.max_steps      | 1000                                  |
 | episode.deterministic  | true                                 |
 | scoring.primary_metric | normalized_score                     |

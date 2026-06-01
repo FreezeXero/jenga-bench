@@ -1,6 +1,6 @@
 # Local development (Ollama)
 
-Iterate on `env.py` and `benchanything.json` on your machine before `mesocosm env submit`. No API keys — only [Ollama](https://ollama.com).
+Iterate on `env.py` and `auxiliary/benchanything.json` on your machine before `mesocosm env submit`. No API keys — only [Ollama](https://ollama.com).
 
 ## One-time setup
 
@@ -50,10 +50,11 @@ python adapter.py
 **Terminal 2 — bench episodes**
 
 ```bash
-mesocosm run local --manifest benchanything.json --model ollama/gemma3
+mesocosm run local --manifest auxiliary/benchanything.json --model ollama/gemma3
 ```
 
-Uses `benchanything.json` for the binding vow and scoring. Does **not** register the domain or create platform runs.
+Uses `auxiliary/benchanything.json` for the binding vow and scoring. Does **not** register the domain or create platform runs.
+The model must return wrapped JSON of the form `{"context":"...", "action": {...}}`, not a bare action object.
 
 ## Flags
 
@@ -62,7 +63,7 @@ Uses `benchanything.json` for the binding vow and scoring. Does **not** register
 | `--model` | CLI default: `ollama/llama3.2` | JengaBench requires a multimodal model such as `ollama/gemma3` |
 | `--episodes` | `5` | Number of episodes |
 | `--env-url` | `http://localhost:8765` | Adapter URL if you changed the port |
-| `--manifest` | CLI scaffold default | Use `benchanything.json` for this root-layout repository |
+| `--manifest` | CLI scaffold default | Use `auxiliary/benchanything.json` for this repository |
 | `--system-prompt` | — | Extra instruction for the agent |
 
 ## Ship to Mesocosm
@@ -72,7 +73,7 @@ When local runs look good:
 ```bash
 mesocosm auth login
 mesocosm env submit --name "My env" --github-url https://github.com/you/your-repo
-# submit clones the repo and registers a draft domain from benchanything.json — no separate register step
+# submit clones the repo and registers a draft domain from auxiliary/benchanything.json — no separate register step
 mesocosm env list   # note domain_id when status is ready
 mesocosm run create --domain DOMAIN_ID --vow-version 1.0.0 --model gemini/gemini-3.1-flash-lite ...
 ```

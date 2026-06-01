@@ -114,8 +114,9 @@ pinned Docker runtime.
 
 The agent-facing observation payload is the rendered PNG only. The environment
 reports non-privileged metadata through the observation's `system_prompt`:
-camera pose, removal count, available placement slots, current phase, and the
-last five action outcomes. Replay-only state stays in string-valued `info`
+camera pose, removal count, available placement slots, current phase, moves
+remaining before the next required extraction, and the last five model
+`context` strings. Replay-only state stays in string-valued `info`
 fields and is not shown to the model.
 
 #### Render
@@ -127,10 +128,18 @@ without harsh contrast or blown-out highlights that would obscure block colors
 for the LLM.
 
 ### Action Space
-Exactly one JSON action is submitted per `step` call. The three full benchmark
-action types are ChangeViewpoint, Push, and PlaceBack. Mesocosm records the
-model's response text separately for replay, so actions do not duplicate
-reasoning annotations.
+Exactly one JSON object is submitted per `step` call:
+
+```json
+{
+  "context": "Brief rationale for this turn.",
+  "action": { "type": "ChangeViewpoint" | "Push" | "PlaceBack", "...": "..." }
+}
+```
+
+`context` is a short rationale string that is fed back to the model in the next
+turn's prompt history. `action` is the executable env action. The three full
+benchmark action types remain ChangeViewpoint, Push, and PlaceBack.
 
 #### Change Viewpoint
 
@@ -161,8 +170,8 @@ Sets a new camera state. Tower state unchanged. Reward = 0.
 #### Place Back
 
 After a successful extraction, the agent may look (ChangeViewpoint) before
-placing, but must PlaceBack before any Push. Viewpoints during this phase count
-toward the consecutive-viewpoint timeout.
+placing, but must PlaceBack before any Push. These turns still consume the
+extraction countdown until the next successful extraction happens.
 
 | Field    | Description                                                                                    |
 |----------|------------------------------------------------------------------------------------------------|
@@ -187,7 +196,7 @@ toward the consecutive-viewpoint timeout.
 | PlaceBack              | 0        |
 | Invalid action         | -0.5     |
 | Collapse               | 0 (episode terminates) |
-| 10 consecutive viewpoints | -10 raw points (episode terminates) |
+| 10 turns without a successful extraction | -10 raw points (episode terminates) |
 
 Theoretical max: 98 extractions = 100% score. Report the leaderboard score as
 `round(raw_points / 98 * 100, 2)`. Penalties can produce a score below 0.00.
@@ -209,12 +218,16 @@ Collapse is checked continuously during both the push ramp and settling phases. 
 
 Before each push, the simulation snapshots which blocks are vertically in contact with which (excluding the target block). During the push and settle, if any non-target block loses one of those vertical contacts for 30 consecutive steps, it means something fell that the agent didn't intend to move.
 
+Only a fully extracted block resets the countdown to 10. Viewpoint changes,
+placements, invalid actions, failed pushes, and collapse-causing pushes all
+consume one move from the countdown.
+
 ### Episode Termination (done = true)
 
 | Condition    | Description                                                              |
 |--------------|--------------------------------------------------------------------------|
 | Collapse     | ground contact or lost vertical contact (see above)                      |
-| Viewpoint timeout | 10 consecutive ChangeViewpoint actions without a Push or PlaceBack. The counter resets after Push or PlaceBack. |
+| Extraction timeout | 10 turns without a successful extraction. The countdown resets only after a fully extracted block. |
 | Perfect completion | 98 successful extractions |
 
 No retries; score is locked at termination.
