@@ -764,7 +764,8 @@
       card.onclick=()=>showStep(index);
       timeline.appendChild(card);
       if(collapsed){
-        const boom=el('button','step-card fail'+(index===currentStepIdx?' active':''));
+        const isActive=index===currentStepIdx;
+        const boom=el('button','step-card collapse'+(isActive?' active':''));
         boom.append(el('span','step-card-symbol','💥'));
         boom.append(el('span','step-card-label','Collapse'));
         if(Number(step.reward)){boom.append(el('span','step-card-reward negative',Number(step.reward).toFixed(1)));}
@@ -777,16 +778,22 @@
   function makeStepInfo(step) {
     const wrap=el('div','replay-detail-inner'),header=el('div','step-detail-header');
     if(step.recording_status==='unavailable'){return wrap;}
+    const type=actionType(step), chip=el('span','chip '+(type==='ChangeViewpoint'?'blue':step.terminated?'red':''),type.toUpperCase());
+    header.append(chip,el('span','step-detail-title',`Step ${step.step}`));
+    wrap.append(header);
+    if(step.see||step.do||step.next){
+      const esc=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML;};
+      const rows=[['see','SEE',step.see],['do','DO',step.do],['next','NEXT',step.next]];
+      const reasoning=el('div','sdn-list');
+      rows.forEach(([cls,label,text])=>{if(!text)return;const row=el('div','sdn-row');row.innerHTML=`<span class="sdn-pill ${cls}">${label}</span><span class="sdn-text">${esc(text)}</span>`;reasoning.append(row);});
+      wrap.append(reasoning);
+    } else if(step.context){wrap.append(el('div','step-reasoning',step.context));}
+    const details=el('details','step-action-details');const summary=el('summary','step-action-summary','Raw action');details.append(summary,el('pre','step-action',JSON.stringify(cleanAction(step.action),null,2)));wrap.append(details);
+    if(step.terminated)wrap.append(el('div','step-terminated','Episode terminated'));
     const capture=el('div','replay-capture'),frame=el('div','step-frame');
     if(step.agent_frame){const img=el('img');img.alt='AI view';img.src=step.agent_frame.startsWith('data:')?step.agent_frame:`data:image/png;base64,${step.agent_frame}`;frame.append(img);}
     else frame.append(el('div','step-frame-placeholder','No captured AI frame'));
     capture.append(frame,el('div','step-frame-label','AI view'));wrap.append(capture);
-    const type=actionType(step), chip=el('span','chip '+(type==='ChangeViewpoint'?'blue':step.terminated?'red':''),type.toUpperCase());
-    header.append(chip,el('span','step-detail-title',`Step ${step.step}`),el('span','reward-tag '+(step.reward<0?'red':step.reward>0?'green':''),`${step.reward>0?'+':''}${Number(step.reward).toFixed(1)} pts`));
-    if(step.see||step.do||step.next){const r=el('div','step-reasoning');const e=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML;};r.innerHTML='<b style="color:#6ab4e8">SEE:</b> '+e(step.see||'')+'<br><b style="color:#e8a050">DO:</b> '+e(step.do||'')+'<br><b style="color:#b07adb">NEXT:</b> '+e(step.next||'');wrap.append(header,r);}
-    else wrap.append(header,el('div','step-reasoning',step.context||'No recorded context.'));
-    wrap.append(el('pre','step-action',JSON.stringify(cleanAction(step.action),null,2)));
-    if(step.terminated)wrap.append(el('div','step-terminated','Episode terminated'));
     return wrap;
   }
 
