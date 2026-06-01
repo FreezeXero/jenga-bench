@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>JengaBench Data Viewer</title>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#141214;color:#e0ddd8;min-height:100vh;padding:24px}
+.header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+h1{font-size:18px;font-weight:700;color:#e8721a}
+h1 span{color:#888;font-weight:400}
+.drop-zone{border:2px dashed #333;border-radius:10px;padding:32px;text-align:center;color:#666;cursor:pointer;margin-bottom:20px;transition:border-color .15s}
+.drop-zone:hover,.drop-zone.over{border-color:#e8721a;color:#e8721a}
+.drop-zone input{display:none}
+.runs{display:flex;flex-direction:column;gap:20px}
+.run{background:#1c1a1e;border:1px solid #2a282c;border-radius:10px;overflow:hidden}
+.run-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #2a282c;cursor:pointer}
+.run-header:hover{background:#222}
+.run-model{font-size:15px;font-weight:700;color:#e8721a}
+.run-meta{font-size:12px;color:#777;display:flex;gap:14px}
+.run-meta span{display:flex;align-items:center;gap:4px}
+.run-body{padding:16px 18px}
+.stats{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.stat{background:#1a181c;border:1px solid #2a282c;border-radius:8px;padding:10px 14px;min-width:100px}
+.stat-val{font-size:20px;font-weight:600;font-variant-numeric:tabular-nums;color:#e0ddd8}
+.stat-val.neg{color:#e05555}
+.stat-val.pos{color:#55b87a}
+.stat-val.orange{color:#e8721a}
+.stat-label{font-size:10px;text-transform:uppercase;letter-spacing:.06em;color:#666;margin-top:2px}
+.episodes{display:flex;flex-direction:column;gap:12px}
+.episode{background:#1a181c;border:1px solid #2a282c;border-radius:8px;padding:14px 16px}
+.ep-top{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.badge{font-size:11px;font-weight:700;padding:3px 9px;border-radius:5px;text-transform:uppercase;letter-spacing:.04em}
+.badge.collapse{background:#3a1515;color:#e05555}
+.badge.completed{background:#153a1f;color:#55b87a}
+.badge.running{background:#3a3015;color:#e8a830}
+.ep-id{font-size:11px;color:#555;font-family:monospace}
+.ep-stats{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.ep-stat{font-size:12px;color:#888}
+.ep-stat b{color:#ccc;font-weight:600}
+.context{background:#111;border-left:3px solid #e8721a;padding:10px 14px;border-radius:0 6px 6px 0;font-size:13px;line-height:1.6;color:#aaa;margin-top:10px;white-space:pre-wrap;word-break:break-word}
+.events{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.event-tag{font-size:11px;padding:3px 8px;border-radius:4px;background:#2a282c;color:#ccc}
+.event-tag.push_collapse{background:#3a1515;color:#e05555}
+.remove-btn{font-size:11px;color:#555;background:none;border:1px solid #333;border-radius:5px;padding:3px 10px;cursor:pointer}
+.remove-btn:hover{color:#e05555;border-color:#e05555}
+.empty{text-align:center;color:#444;padding:40px;font-size:14px}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>JengaBench <span>Data Viewer</span></h1>
+  <span style="font-size:12px;color:#555" id="count"></span>
+</div>
+
+<div class="drop-zone" id="drop">
+  Drop JSON files here or click to browse
+  <input type="file" id="picker" multiple accept=".json">
+</div>
+
+<div class="runs" id="runs">
+  <div class="empty">No data loaded</div>
+</div>
+
+<script>
+const runs = [];
+const runsEl = document.getElementById('runs');
+const dropEl = document.getElementById('drop');
+const pickerEl = document.getElementById('picker');
+const countEl = document.getElementById('count');
+
+dropEl.addEventListener('click', () => pickerEl.click());
+dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.add('over'); });
+dropEl.addEventListener('dragleave', () => dropEl.classList.remove('over'));
+dropEl.addEventListener('drop', e => { e.preventDefault(); dropEl.classList.remove('over'); handleFiles(e.dataTransfer.files); });
+pickerEl.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(files) {
+  [...files].forEach(f => {
+    const r = new FileReader();
+    r.onload = () => { try { addRun(JSON.parse(r.result)); } catch(e) { alert('Bad JSON: ' + f.name); } };
+    r.readAsText(f);
+  });
+}
+
+function jsonVal(v, fallback) {
+  if (typeof v === 'string') try { return JSON.parse(v); } catch { return fallback; }
+  return v ?? fallback;
+}
+
+function addRun(data) {
+  runs.push(data);
+  render();
+}
+
+function removeRun(i) {
+  runs.splice(i, 1);
+  render();
+}
+
+function render() {
+  countEl.textContent = runs.length ? runs.length + ' run' + (runs.length > 1 ? 's' : '') : '';
+  if (!runs.length) { runsEl.innerHTML = '<div class="empty">No data loaded</div>'; return; }
+  runsEl.innerHTML = '';
+  runs.forEach((data, idx) => {
+    const run = data.run || {};
+    const config = run.config || {};
+    const agent = config.agent_config || {};
+    const score = (run.scores || {}).normalized_score ?? 0;
+    const episodes = data.episodes || [];
+
+    const div = document.createElement('div');
+    div.className = 'run';
+    div.innerHTML = `
+      <div class="run-header" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'">
+        <div>
+          <div class="run-model">${esc(agent.model || 'Unknown')}</div>
+          <div class="run-meta">
+            <span>${esc(run.id?.slice(0,8) || '—')}</span>
+            <span>${esc(run.status || '—')}</span>
+            <span>${run.created_at ? new Date(run.created_at).toLocaleDateString() : '—'}</span>
+          </div>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div class="stat-val ${score < 0 ? 'neg' : score > 0 ? 'pos' : ''}" style="font-size:22px">${score.toFixed(2)}</div>
+          <button class="remove-btn" onclick="event.stopPropagation();removeRun(${idx})">×</button>
+        </div>
+      </div>
+      <div class="run-body">
+        <div class="stats">
+          <div class="stat"><div class="stat-val orange">${episodes.length}</div><div class="stat-label">Episodes</div></div>
+          <div class="stat"><div class="stat-val">${agent.temperature ?? '—'}</div><div class="stat-label">Temp</div></div>
+          <div class="stat"><div class="stat-val">${agent.max_tokens ?? '—'}</div><div class="stat-label">Max Tokens</div></div>
+          <div class="stat"><div class="stat-val">${esc(data.domain_name || '—')}</div><div class="stat-label">Domain</div></div>
+        </div>
+        <div class="episodes">${episodes.map((ep, ei) => renderEpisode(ep, ei)).join('')}</div>
+      </div>`;
+    runsEl.appendChild(div);
+  });
+}
+
+function renderEpisode(ep, i) {
+  const ti = ep.terminal_info || {};
+  const events = jsonVal(ti.events, []);
+  const outcome = ti.outcome || ti.termination_reason || ep.status || '';
+  const badgeClass = outcome === 'collapse' ? 'collapse' : outcome === 'completed' ? 'completed' : 'running';
+  return `<div class="episode">
+    <div class="ep-top">
+      <span class="badge ${badgeClass}">${esc(outcome)}</span>
+      <span style="font-size:13px;font-weight:600">Episode ${i + 1}</span>
+      <span class="ep-id">${esc(ep.id?.slice(0, 12) || '')}</span>
+    </div>
+    <div class="ep-stats">
+      <span class="ep-stat">Seed <b>${ep.seed ?? '—'}</b></span>
+      <span class="ep-stat">Steps <b>${ep.steps ?? '—'}</b></span>
+      <span class="ep-stat">Reward <b style="color:${(ep.total_reward||0)<0?'#e05555':'#55b87a'}">${Number(ep.total_reward||0).toFixed(1)}</b></span>
+      <span class="ep-stat">Blocks out <b>${ti.blocks_removed ?? '—'}</b></span>
+      <span class="ep-stat">Frames <b>${ti.frame_count ?? '—'}</b></span>
+      <span class="ep-stat">Tokens <b>${ti.total_tokens?.toLocaleString() ?? '—'}</b></span>
+    </div>
+    ${events.length ? '<div class="events">' + events.map(e => `<span class="event-tag ${esc(e)}">${esc(e)}</span>`).join('') + '</div>' : ''}
+    ${ti.latest_context ? '<div class="context">' + esc(ti.latest_context) + '</div>' : ''}
+  </div>`;
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = String(s); return d.innerHTML; }
+</script>
+</body>
+</html>
