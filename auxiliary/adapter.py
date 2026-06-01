@@ -7,6 +7,10 @@ Local dev:
 """
 
 import argparse
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from bench_common.env_sdk import serve
 from env import JengaBenchEnv

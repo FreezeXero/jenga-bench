@@ -845,6 +845,7 @@ body {
 
 .full-replay-frame {
   aspect-ratio: 1;
+  max-height: 55vh;
   border-radius: 10px;
   background: var(--surface-low);
   border: 1px solid var(--surface-higher);
