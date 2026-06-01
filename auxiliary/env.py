@@ -224,8 +224,8 @@ class JengaBenchEnv(BaseEnv):
             "Return exactly one JSON action. Available actions: "
             '{"type":"ChangeViewpoint","direction":"N|NE|E|SE|S|SW|W|NW",'
             '"elevation_layer":1..18,"distance":"Close|Medium|Full",'
-            '"target_block":{"layer":int,"color":"Blue|Brown|Red"}} or '
-            '{"type":"Push","layer":"1..one below current top layer","color":"Blue|Brown|Red",'
+            '"target_block":{"layer":int,"color":"Blue|Green|Red"}} or '
+            '{"type":"Push","layer":"1..one below current top layer","color":"Blue|Green|Red",'
             '"face":"North|South|East|West","contact":"center|left|right",'
             '"intensity":"Gentle|Firm|Hard"} or '
             '{"type":"PlaceBack","position":"Left|Middle|Right"}. '
@@ -284,8 +284,8 @@ class JengaBenchEnv(BaseEnv):
                 return "target_block must be an object with layer and color"
             if "layer" not in target_block or "color" not in target_block:
                 return "target_block must have layer and color fields"
-            if target_block["color"] not in ("Blue", "Brown", "Red"):
-                return "target_block color must be Blue, Brown, or Red"
+            if target_block["color"] not in ("Blue", "Green", "Red"):
+                return "target_block color must be Blue, Green, or Red"
         return None
 
     def _last_outcome(self) -> str:

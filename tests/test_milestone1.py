@@ -100,6 +100,59 @@ class ActionContractTests(unittest.TestCase):
         self.assertEqual(result.info["normalized_score"], "-10.20")
         self.assertEqual(result.info["termination_reason"], "viewpoint_timeout")
 
+    def test_change_viewpoint_without_target_block_leaves_camera_untargeted(self) -> None:
+        env = JengaBenchEnv()
+        env.reset(seed=1)
+
+        result = env.step(viewpoint(direction="E", elevation_layer=9, distance="Medium"))
+
+        self.assertNotIn("target_block", json.loads(result.info["camera_state"]))
+
+    def test_targeted_viewpoint_can_be_cleared_by_omitting_target_block(self) -> None:
+        env = JengaBenchEnv()
+        env.reset(seed=1)
+
+        first = env.step(
+            {
+                "type": "ChangeViewpoint",
+                "direction": "E",
+                "elevation_layer": 9,
+                "distance": "Medium",
+                "target_block": {"layer": 10, "color": "Green"},
+            }
+        )
+        second = env.step(viewpoint(direction="E", elevation_layer=9, distance="Medium"))
+
+        self.assertIn("target_block", json.loads(first.info["camera_state"]))
+        self.assertNotIn("target_block", json.loads(second.info["camera_state"]))
+
+    def test_change_viewpoint_accepts_green_and_rejects_brown_target(self) -> None:
+        env = JengaBenchEnv()
+        env.reset(seed=1)
+
+        accepted = env.step(
+            {
+                "type": "ChangeViewpoint",
+                "direction": "E",
+                "elevation_layer": 9,
+                "distance": "Medium",
+                "target_block": {"layer": 10, "color": "Green"},
+            }
+        )
+        rejected = env.step(
+            {
+                "type": "ChangeViewpoint",
+                "direction": "E",
+                "elevation_layer": 9,
+                "distance": "Medium",
+                "target_block": {"layer": 10, "color": "Brown"},
+            }
+        )
+
+        self.assertEqual(accepted.reward, 0.0)
+        self.assertEqual(rejected.reward, INVALID_ACTION_PENALTY)
+        self.assertIn("Blue, Green, or Red", rejected.info["events"])
+
 
 class ManifestTests(unittest.TestCase):
     def test_manifest_validates(self) -> None:
@@ -125,6 +178,14 @@ class ManifestTests(unittest.TestCase):
         self.assertEqual(variants["Push"]["properties"]["layer"]["minimum"], 1)
         self.assertEqual(variants["Push"]["properties"]["intensity"]["enum"], ["Gentle", "Firm", "Hard"])
         self.assertIn("position", variants["PlaceBack"]["properties"])
+        self.assertEqual(
+            variants["Push"]["properties"]["color"]["enum"],
+            ["Blue", "Green", "Red"],
+        )
+        self.assertEqual(
+            variants["ChangeViewpoint"]["properties"]["target_block"]["properties"]["color"]["enum"],
+            ["Blue", "Green", "Red"],
+        )
         self.assertTrue(all(variant["additionalProperties"] is False for variant in variants.values()))
 
 

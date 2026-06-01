@@ -129,7 +129,7 @@
                   <select id="cam-target-color" class="form-input">
                     <option value="">None</option>
                     <option>Blue</option>
-                    <option>Brown</option>
+                    <option>Green</option>
                     <option>Red</option>
                   </select>
                 </div>
@@ -156,7 +156,7 @@
               <label class="form-label">Color</label>
               <div class="pill-group" id="color-pills">
                 <button class="pill active" data-val="Blue">Blue</button>
-                <button class="pill" data-val="Brown">Brown</button>
+                <button class="pill" data-val="Green">Green</button>
                 <button class="pill" data-val="Red">Red</button>
               </div>
               <select id="push-color" class="hidden"></select>
@@ -350,7 +350,7 @@
       elevation_layer: llmCamera.elevation_layer,
       distance: llmCamera.distance,
     };
-    if (llmCamera.target_layer) {
+    if (llmCamera.target_layer && llmCamera.target_color) {
       payload.target_block = { layer: llmCamera.target_layer, color: llmCamera.target_color };
     }
     fetch('/api/capture', {
@@ -396,6 +396,7 @@
   function bindPills(groupId, selectId, onchange) {
     document.querySelectorAll(`#${groupId} .pill`).forEach(pill => {
       pill.addEventListener('click', () => {
+        if (pill.disabled || pill.classList.contains('disabled')) return;
         document.querySelectorAll(`#${groupId} .pill`).forEach(p => p.classList.remove('active'));
         pill.classList.add('active');
         const sel = document.getElementById(selectId);
@@ -404,37 +405,6 @@
       });
     });
   }
-
-  function updateLayerDependentPills() {
-    const layer = Number(document.getElementById('push-layer').value);
-    const isOdd = layer % 2 === 1;
-    const colors = ['Blue','Brown','Red'];
-    const faces = isOdd ? ['North','South'] : ['East','West'];
-
-    const colorGroup = document.getElementById('color-pills');
-    colorGroup.innerHTML = colors.map((c,i) =>
-      `<button class="pill${i===0?' active':''}" data-val="${c}">${c}</button>`
-    ).join('');
-    document.getElementById('push-color').value = colors[0];
-    bindPills('color-pills', 'push-color');
-
-    const faceGroup = document.getElementById('face-pills');
-    faceGroup.innerHTML = faces.map((f,i) =>
-      `<button class="pill${i===0?' active':''}" data-val="${f}">${f}</button>`
-    ).join('');
-    document.getElementById('push-face').value = faces[0];
-    bindPills('face-pills', 'push-face');
-
-    const colorSel = document.getElementById('push-color');
-    colorSel.innerHTML = colors.map(c => `<option>${c}</option>`).join('');
-    colorSel.value = colors[0];
-    const faceSel = document.getElementById('push-face');
-    faceSel.innerHTML = faces.map(f => `<option>${f}</option>`).join('');
-    faceSel.value = faces[0];
-  }
-
-  document.getElementById('push-layer').addEventListener('input', updateLayerDependentPills);
-  updateLayerDependentPills();
 
   bindPills('contact-grid', 'push-contact');
   bindPills('strength-pills', 'push-intensity');
@@ -484,7 +454,7 @@
       },
       { name: "GPT-4o", score: 74.5, blocks: 12, episodes: 3, invalid: 4, color: "#5da8d6",
         steps: [
-          { step:1, type:"push", action:{type:"Push",layer:8,color:"Brown",face:"North",contact:"center",intensity:"Gentle"}, reasoning:"Starting with middle layer — lower structural risk.", reward:0, terminated:false },
+          { step:1, type:"push", action:{type:"Push",layer:8,color:"Green",face:"North",contact:"center",intensity:"Gentle"}, reasoning:"Starting with middle layer — lower structural risk.", reward:0, terminated:false },
           { step:2, type:"push", action:{type:"Push",layer:3,color:"Red",face:"South",contact:"left",intensity:"Hard"}, reasoning:"Aggressive lower extraction attempt.", reward:-0.5, terminated:true },
         ]
       },

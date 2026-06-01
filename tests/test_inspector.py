@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import struct
 import unittest
 
@@ -10,7 +11,7 @@ if PHYSICS_AVAILABLE:
     from fastapi.testclient import TestClient
 
     from env import JengaBenchEnv
-    from jenga.render import IMAGE_HEIGHT, IMAGE_WIDTH, CameraPose, render_png
+    from jenga.render import BLOCK_HEIGHT, IMAGE_HEIGHT, IMAGE_WIDTH, CameraPose
     from showcase.server import DEFAULT_CAMERA, PreviewState, app, preview
 
 
@@ -115,11 +116,13 @@ class InspectorRouteTests(unittest.TestCase):
         self.assertEqual(scene["camera"]["azimuth"], 225.0)
         self.assertEqual(len(scene["blocks"]), 54)
         self.assertEqual(scene["base"]["size"], [0.25, 0.25, 0.045])
+        self.assertIn("layer", scene["blocks"][0])
+        self.assertIn("color_name", scene["blocks"][0])
 
     def test_capture_returns_png_with_camera_headers(self) -> None:
         response = self.client.post(
             "/api/capture",
-            json={"azimuth": 90, "pitch": 5, "distance_cm": 60},
+            json={"direction": "E", "elevation_layer": 9, "distance": "Full"},
         )
 
         self.assertEqual(response.status_code, 200)
@@ -127,6 +130,20 @@ class InspectorRouteTests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(response.headers["x-camera-azimuth"], "90.00")
         self.assertEqual(struct.unpack(">II", response.content[16:24]), (512, 512))
+
+    def test_capture_accepts_optional_target_block(self) -> None:
+        self.client.post("/api/reset?seed=7")
+        response = self.client.post(
+            "/api/capture",
+            json={
+                "direction": "E",
+                "elevation_layer": 9,
+                "distance": "Full",
+                "target_block": {"layer": 12, "color": "Green"},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
 
     def test_reset_returns_local_render_scene(self) -> None:
         response = self.client.post("/api/reset?seed=7")
@@ -139,10 +156,10 @@ class InspectorRouteTests(unittest.TestCase):
 
     def test_invalid_camera_values_are_rejected(self) -> None:
         cases = [
-            {"azimuth": -1, "pitch": 5, "distance_cm": 60},
-            {"azimuth": 90, "pitch": -46, "distance_cm": 60},
-            {"azimuth": 90, "pitch": 76, "distance_cm": 60},
-            {"azimuth": 90, "pitch": 5, "distance_cm": 121},
+            {"direction": "E", "elevation_layer": 0, "distance": "Full"},
+            {"direction": "E", "elevation_layer": 19, "distance": "Full"},
+            {"direction": "E", "elevation_layer": 9, "distance": "Far"},
+            {"direction": "E", "elevation_layer": 9, "distance": "Full", "target_block": {"layer": 9, "color": "Brown"}},
         ]
 
         for camera in cases:
@@ -150,30 +167,39 @@ class InspectorRouteTests(unittest.TestCase):
                 response = self.client.post("/api/capture", json=camera)
                 self.assertEqual(response.status_code, 422)
 
-    def test_negative_pitch_is_allowed(self) -> None:
-        response = self.client.post(
-            "/api/capture",
-            json={"azimuth": 90, "pitch": -45, "distance_cm": 60},
-        )
-
-        self.assertEqual(response.status_code, 200)
-
-
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
 class RenderCompatibilityTests(unittest.TestCase):
-    def test_environment_observation_matches_direct_current_camera_render(self) -> None:
+    def test_target_block_changes_aim_without_changing_camera_elevation(self) -> None:
         env = JengaBenchEnv()
         try:
             env.reset(seed=3)
-            result = env.step(
-                {"type": "ChangeViewpoint", "azimuth": 90, "pitch": 5, "distance_cm": 60}
-            )
-            direct = render_png(
-                env._simulation,
-                CameraPose(azimuth=90, pitch=5, distance_cm=60),
+            camera = CameraPose.from_viewpoint("E", 5, 45)
+            untargeted_eye = camera.position()
+            self.assertAlmostEqual(
+                untargeted_eye[2],
+                (5 - 0.5) * BLOCK_HEIGHT,
+                places=6,
             )
 
-            self.assertEqual(result.observation, direct)
+            env.step(
+                {
+                    "type": "ChangeViewpoint",
+                    "direction": "E",
+                    "elevation_layer": 5,
+                    "distance": "Full",
+                    "target_block": {"layer": 12, "color": "Green"},
+                }
+            )
+            targeted_eye = CameraPose.from_viewpoint("E", 5, 45).position()
+            self.assertEqual(untargeted_eye, targeted_eye)
+
+            target = env._resolve_target()
+            self.assertIsNotNone(target)
+            assert target is not None
+            self.assertNotEqual(
+                tuple(round(value, 6) for value in target),
+                tuple(round(value, 6) for value in (0.0, 0.0, (5 - 0.5) * BLOCK_HEIGHT)),
+            )
         finally:
             env.close()
 

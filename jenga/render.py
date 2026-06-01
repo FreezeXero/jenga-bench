@@ -30,6 +30,7 @@ class CameraPose:
     azimuth: float
     pitch: float
     distance_cm: float
+    elevation_layer: int = 9
 
     @classmethod
     def from_viewpoint(
@@ -39,13 +40,29 @@ class CameraPose:
         distance_cm: float,
     ) -> CameraPose:
         azimuth = DIRECTION_AZIMUTHS.get(direction, 225)
-        target_z = (elevation_layer - 0.5) * BLOCK_HEIGHT
         pitch = 15.0
-        return cls(azimuth=azimuth, pitch=pitch, distance_cm=distance_cm)
+        return cls(
+            azimuth=azimuth,
+            pitch=pitch,
+            distance_cm=distance_cm,
+            elevation_layer=elevation_layer,
+        )
 
     @staticmethod
     def target_for_layer(elevation_layer: int) -> tuple[float, float, float]:
         return (0.0, 0.0, (elevation_layer - 0.5) * BLOCK_HEIGHT)
+
+    def position(self) -> tuple[float, float, float]:
+        import math
+
+        yaw = math.radians(self.azimuth)
+        distance = self.distance_cm / 100.0
+        anchor_x, anchor_y, anchor_z = self.target_for_layer(self.elevation_layer)
+        return (
+            anchor_x + math.sin(yaw) * distance,
+            anchor_y - math.cos(yaw) * distance,
+            anchor_z,
+        )
 
 
 def render_png(
@@ -53,14 +70,13 @@ def render_png(
     camera: CameraPose,
     target: tuple[float, float, float] | None = None,
 ) -> bytes:
-    aim = target if target is not None else TOWER_MIDPOINT
-    view = bullet.computeViewMatrixFromYawPitchRoll(
+    default_target = CameraPose.target_for_layer(camera.elevation_layer)
+    aim = target if target is not None else default_target
+    eye = camera.position()
+    view = bullet.computeViewMatrix(
+        cameraEyePosition=eye,
         cameraTargetPosition=aim,
-        distance=camera.distance_cm / 100.0,
-        yaw=camera.azimuth,
-        pitch=-camera.pitch,
-        roll=0.0,
-        upAxisIndex=2,
+        cameraUpVector=(0.0, 0.0, 1.0),
     )
     projection = bullet.computeProjectionMatrixFOV(
         fov=RENDER.field_of_view_degrees,

@@ -23,7 +23,7 @@ if PHYSICS_AVAILABLE:
     )
     from showcase.server import app, motion_lock, preview
 
-    REQUEST = PushRequest(layer=8, color="Brown", face="East", contact="center", intensity="Gentle")
+    REQUEST = PushRequest(layer=8, color="Green", face="East", contact="center", intensity="Gentle")
 else:
     REQUEST = None
 
@@ -76,10 +76,10 @@ class DynamicTowerTests(unittest.TestCase):
         try:
             sim.reset(seed=0)
             invalid = [
-                PushRequest(0, "Brown", "East", "center", "Gentle"),
-                PushRequest(8, "Brown", "North", "center", "Gentle"),
-                PushRequest(8, "Brown", "East", "outside", "Gentle"),
-                PushRequest(8, "Brown", "East", "center", "Extreme"),
+                PushRequest(0, "Green", "East", "center", "Gentle"),
+                PushRequest(8, "Green", "North", "center", "Gentle"),
+                PushRequest(8, "Green", "East", "outside", "Gentle"),
+                PushRequest(8, "Green", "East", "center", "Extreme"),
             ]
             for request in invalid:
                 with self.subTest(request=request), self.assertRaises(PushValidationError):
@@ -92,9 +92,9 @@ class DynamicTowerTests(unittest.TestCase):
         try:
             sim.reset(seed=0)
             self.assertEqual(sim.max_push_layer, 17)
-            sim._validate_push(PushRequest(17, "Brown", "North", "center", "Gentle"))
+            sim._validate_push(PushRequest(17, "Green", "North", "center", "Gentle"))
             with self.assertRaises(PushValidationError):
-                sim.push(PushRequest(18, "Brown", "East", "center", "Gentle"))
+                sim.push(PushRequest(18, "Green", "East", "center", "Gentle"))
         finally:
             sim.close()
 
@@ -105,7 +105,7 @@ class DynamicTowerTests(unittest.TestCase):
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
-            result = sim.push(PushRequest(10, "Brown", "East", "center", "Hard"))
+            result = sim.push(PushRequest(10, "Green", "East", "center", "Hard"))
             self.assertEqual(result.outcome, "extracted")
             self.assertEqual(result.frames[-1]["phase"], "extracted")
             self.assertGreater(result.settle_steps, 0)
@@ -117,11 +117,11 @@ class DynamicTowerTests(unittest.TestCase):
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
-            extracted = sim.push(PushRequest(10, "Brown", "East", "center", "Hard"))
+            extracted = sim.push(PushRequest(10, "Green", "East", "center", "Hard"))
             self.assertEqual(extracted.outcome, "extracted")
             self.assertEqual(len(sim.retired_body_ids), 1)
             with self.assertRaises(PushValidationError):
-                sim.push(PushRequest(8, "Brown", "East", "center", "Gentle"))
+                sim.push(PushRequest(8, "Green", "East", "center", "Gentle"))
         finally:
             sim.close()
 
@@ -129,14 +129,14 @@ class DynamicTowerTests(unittest.TestCase):
         sim = JengaSimulation()
         try:
             sim.reset(seed=0)
-            extracted = sim.push(PushRequest(10, "Brown", "East", "center", "Hard"))
+            extracted = sim.push(PushRequest(10, "Green", "East", "center", "Hard"))
             self.assertEqual(extracted.outcome, "extracted")
             internal_id = extracted.target_id
             result = sim.place_back(PlaceRequest("Middle"))
             self.assertEqual(result.outcome, "placed")
             placed = next(block for block in sim.blocks if block.spec.internal_id == internal_id)
             self.assertEqual(placed.spec.layer, 19)
-            self.assertEqual(placed.spec.color_name, "Brown")
+            self.assertEqual(placed.spec.color_name, "Green")
             self.assertIsNone(sim.held_block)
             self.assertIn("place-drop", [frame["phase"] for frame in result.frames])
             self.assertIn("color", result.frames[-1]["blocks"][0])
@@ -279,7 +279,7 @@ class ModelPushTests(unittest.TestCase):
                 {
                     "type": "Push",
                     "layer": 8,
-                    "color": "Brown",
+                    "color": "Green",
                     "face": "East",
                     "contact": "center",
                     "intensity": "Gentle",
@@ -301,7 +301,7 @@ class ModelPushTests(unittest.TestCase):
                 {
                     "type": "Push",
                     "layer": 8,
-                    "color": "Brown",
+                    "color": "Green",
                     "face": "North",
                     "contact": "center",
                     "intensity": "Gentle",
@@ -320,7 +320,7 @@ class ModelPushTests(unittest.TestCase):
                 {
                     "type": "Push",
                     "layer": 10,
-                    "color": "Brown",
+                    "color": "Green",
                     "face": "East",
                     "contact": "center",
                     "intensity": "Hard",

@@ -24,7 +24,7 @@ Each block has their own color. In the following table:
 | Color       | oklch                  | RGB Hex   |
 |-------------|------------------------|-----------|
 | Red         | oklch(0.7, 0.1525, 30) | `#EE7563` |
-| Brown       | oklch(0.75, 0.1, 60)   | `#DD9F6B` |
+| Green       | oklch(0.73, 0.135, 149)| `#4AB078` |
 | Blue        | oklch(0.7, 0.1275, 270)| `#8099EE` |
 
 #### Long Axis of a Block
@@ -40,8 +40,8 @@ East-West layers are when the long axis is aligned East to West.
 
 | Layer Type   | Position Order       | Colors                     |
 |--------------|----------------------|----------------------------|
-| North-South  | East, Middle, West   | Blue, Brown, Red           |
-| East-West    | South, Middle, North | Blue, Brown, Red           |
+| North-South  | East, Middle, West   | Blue, Green, Red           |
+| East-West    | South, Middle, North | Blue, Green, Red           |
 
 All layers use the same three colors. No alternation.
 
