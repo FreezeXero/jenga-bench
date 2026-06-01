@@ -1,6 +1,6 @@
 {
   "id": "jenga-bench",
-  "adapter": "adapter.py",
+  "adapter": "../adapter.py",
   "name": "JengaBench",
   "description": "A deterministic visual benchmark for spatial reasoning and physical planning in an unstable Jenga tower.",
   "tags": ["tier1"],
@@ -8,24 +8,24 @@
   "binding_vow": {
     "version": "1.0.0",
     "tier": "tier1",
-    "description": "Inspect rendered JengaBench camera views and return one structured ChangeViewpoint, Push, or PlaceBack action per turn.",
+    "description": "Inspect rendered JengaBench camera views and return one JSON object per turn containing a short context string plus one structured ChangeViewpoint, Push, or PlaceBack action.",
 
     "observation_space": {
       "type": "image",
       "dtype": "image/png",
-      "description": "A PNG render from the current persistent camera viewpoint. The system_prompt includes camera state, phase, extraction count, available placement positions, and a windowed action log (last 5 entries, most recent first). Each log entry has three fields: saw (camera state before acting), did (the action taken), why (the outcome)."
+      "description": "A PNG render from the current persistent camera viewpoint."
     },
 
     "action_space": {
       "type": "json",
-      "schema_ref": "{\"oneOf\":[{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"ChangeViewpoint\"},\"direction\":{\"type\":\"string\",\"enum\":[\"N\",\"NE\",\"E\",\"SE\",\"S\",\"SW\",\"W\",\"NW\"]},\"elevation_layer\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":18},\"distance\":{\"type\":\"string\",\"enum\":[\"Close\",\"Medium\",\"Full\"]},\"target_block\":{\"type\":\"object\",\"properties\":{\"layer\":{\"type\":\"integer\",\"minimum\":1},\"color\":{\"type\":\"string\",\"enum\":[\"Blue\",\"Green\",\"Red\"]}},\"required\":[\"layer\",\"color\"]}},\"required\":[\"type\",\"direction\",\"elevation_layer\",\"distance\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"Push\"},\"layer\":{\"type\":\"integer\",\"minimum\":1},\"color\":{\"type\":\"string\",\"enum\":[\"Blue\",\"Green\",\"Red\"]},\"face\":{\"type\":\"string\",\"enum\":[\"North\",\"South\",\"East\",\"West\"]},\"contact\":{\"type\":\"string\",\"enum\":[\"center\",\"left\",\"right\"]},\"intensity\":{\"type\":\"string\",\"enum\":[\"Gentle\",\"Firm\",\"Hard\"]}},\"required\":[\"type\",\"layer\",\"color\",\"face\",\"contact\",\"intensity\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"PlaceBack\"},\"position\":{\"type\":\"string\",\"enum\":[\"Left\",\"Middle\",\"Right\"]}},\"required\":[\"type\",\"position\"],\"additionalProperties\":false}]}",
-      "description": "JSON action: ChangeViewpoint with compass direction, elevation layer, Close/Medium/Full distance, and optional target block; Push with layer, positional color, axial face, left/center/right contact, and Gentle/Firm/Hard intensity; or PlaceBack with an available Left/Middle/Right slot."
+      "schema_ref": "{\"type\":\"object\",\"properties\":{\"context\":{\"type\":\"string\"},\"action\":{\"oneOf\":[{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"ChangeViewpoint\"},\"direction\":{\"type\":\"string\",\"enum\":[\"N\",\"NE\",\"E\",\"SE\",\"S\",\"SW\",\"W\",\"NW\"]},\"elevation_layer\":{\"type\":\"integer\",\"minimum\":1,\"maximum\":18},\"distance\":{\"type\":\"string\",\"enum\":[\"Close\",\"Medium\",\"Full\"]},\"target_block\":{\"type\":\"object\",\"properties\":{\"layer\":{\"type\":\"integer\",\"minimum\":1},\"color\":{\"type\":\"string\",\"enum\":[\"Blue\",\"Green\",\"Red\"]}},\"required\":[\"layer\",\"color\"],\"additionalProperties\":false}},\"required\":[\"type\",\"direction\",\"elevation_layer\",\"distance\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"Push\"},\"layer\":{\"type\":\"integer\",\"minimum\":1},\"color\":{\"type\":\"string\",\"enum\":[\"Blue\",\"Green\",\"Red\"]},\"face\":{\"type\":\"string\",\"enum\":[\"North\",\"South\",\"East\",\"West\"]},\"contact\":{\"type\":\"string\",\"enum\":[\"center\",\"left\",\"right\"]},\"intensity\":{\"type\":\"string\",\"enum\":[\"Gentle\",\"Firm\",\"Hard\"]}},\"required\":[\"type\",\"layer\",\"color\",\"face\",\"contact\",\"intensity\"],\"additionalProperties\":false},{\"type\":\"object\",\"properties\":{\"type\":{\"const\":\"PlaceBack\"},\"position\":{\"type\":\"string\",\"enum\":[\"Left\",\"Middle\",\"Right\"]}},\"required\":[\"type\",\"position\"],\"additionalProperties\":false}]}},\"required\":[\"context\",\"action\"],\"additionalProperties\":false}",
+      "description": "Return one JSON object with `context` and `action`. `context` is a short rationale string. `action` is either ChangeViewpoint with compass direction, elevation layer, Close/Medium/Full distance, and optional target block; Push with layer, positional color, axial face, left/center/right contact, and Gentle/Firm/Hard intensity; or PlaceBack with an available Left/Middle/Right slot."
     },
 
     "reward": {
       "type": "scalar",
-      "range": { "low": -10.0, "high": 1.0 },
-      "description": "Successful extractions score +1, valid camera changes and placements score 0, invalid actions score -0.5, collapse terminates the episode, and ten consecutive viewpoints terminate with -10."
+      "range": { "low": -10.5, "high": 1.0 },
+      "description": "Successful extractions score +1, valid camera changes and placements score 0, invalid actions score -0.5, collapse terminates the episode, and ten turns without a successful extraction terminate with -10."
     },
 
     "episode": {

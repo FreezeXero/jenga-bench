@@ -13,9 +13,10 @@ from bench_common.env_sdk.manifest import domain_config_from_manifest
 from bench_common.runtime import inference
 
 from env import (
+    DIRECTIONS,
+    EXTRACTION_COUNTDOWN_START,
     INVALID_ACTION_PENALTY,
     PNG_CONTENT_TYPE,
-    VIEWPOINT_LIMIT,
     JengaBenchEnv,
 )
 
@@ -29,6 +30,13 @@ def viewpoint(direction: str = "NE", elevation_layer: int = 9, distance: str = "
         "direction": direction,
         "elevation_layer": elevation_layer,
         "distance": distance,
+    }
+
+
+def wrapped(action: dict, context: str = "Inspecting current stability.") -> dict:
+    return {
+        "context": context,
+        "action": action,
     }
 
 
@@ -47,17 +55,23 @@ class PngContractTests(unittest.TestCase):
     def test_viewpoint_updates_png_and_prompt(self) -> None:
         env = JengaBenchEnv()
         initial = env.reset(seed=7)
-        result = env.step(viewpoint(direction="E", elevation_layer=5, distance="Medium"))
+        result = env.step(wrapped(viewpoint(direction="E", elevation_layer=5, distance="Medium")))
 
         self.assertEqual(result.content_type, PNG_CONTENT_TYPE)
         self.assertNotEqual(initial["data"], result.observation)
         self.assertIn("direction=E", result.system_prompt or "")
         self.assertIn("elevation_layer=5", result.system_prompt or "")
+        self.assertEqual(result.info["latest_context"], "Inspecting current stability.")
+        self.assertEqual(result.info["moves_until_extraction"], str(EXTRACTION_COUNTDOWN_START - 1))
         self.assertEqual(result.reward, 0.0)
         self.assertFalse(result.terminated)
 
     def test_same_seed_and_actions_are_byte_identical(self) -> None:
-        actions = [viewpoint("NE"), viewpoint("SE", elevation_layer=5), viewpoint("W")]
+        actions = [
+            wrapped(viewpoint("NE"), context="First look."),
+            wrapped(viewpoint("SE", elevation_layer=5), context="Second look."),
+            wrapped(viewpoint("W"), context="Third look."),
+        ]
         first = JengaBenchEnv()
         second = JengaBenchEnv()
 
@@ -77,34 +91,41 @@ class ActionContractTests(unittest.TestCase):
         env = JengaBenchEnv()
         env.reset(seed=1)
 
-        result = env.step({"type": "Push"})
+        result = env.step({"action": {"type": "Push"}})
 
         self.assertEqual(result.reward, INVALID_ACTION_PENALTY)
         self.assertFalse(result.terminated)
         self.assertIn("invalid_action", result.info["events"])
         self.assertEqual(result.info["raw_points"], "-0.50")
+        self.assertEqual(result.info["moves_until_extraction"], str(EXTRACTION_COUNTDOWN_START - 1))
 
-    def test_tenth_viewpoint_terminates_with_negative_normalized_score(self) -> None:
+    def test_tenth_non_extraction_turn_terminates_with_negative_normalized_score(self) -> None:
         env = JengaBenchEnv()
         env.reset(seed=1)
 
-        for index in range(VIEWPOINT_LIMIT - 1):
-            result = env.step(viewpoint(direction=["N","NE","E","SE","S","SW","W","NW","N"][index]))
+        for index in range(EXTRACTION_COUNTDOWN_START - 1):
+            result = env.step(
+                wrapped(
+                    viewpoint(direction=["N", "NE", "E", "SE", "S", "SW", "W", "NW", "N"][index]),
+                    context=f"Look {index + 1}",
+                )
+            )
             self.assertFalse(result.terminated)
 
-        result = env.step(viewpoint(direction="S"))
+        result = env.step(wrapped(viewpoint(direction="S"), context="Last look before forced timeout."))
 
         self.assertTrue(result.terminated)
         self.assertEqual(result.reward, -10.0)
         self.assertEqual(result.info["raw_points"], "-10.00")
         self.assertEqual(result.info["normalized_score"], "-10.20")
-        self.assertEqual(result.info["termination_reason"], "viewpoint_timeout")
+        self.assertEqual(result.info["termination_reason"], "extraction_timeout")
+        self.assertEqual(result.info["moves_until_extraction"], "0")
 
     def test_change_viewpoint_without_target_block_leaves_camera_untargeted(self) -> None:
         env = JengaBenchEnv()
         env.reset(seed=1)
 
-        result = env.step(viewpoint(direction="E", elevation_layer=9, distance="Medium"))
+        result = env.step(wrapped(viewpoint(direction="E", elevation_layer=9, distance="Medium")))
 
         self.assertNotIn("target_block", json.loads(result.info["camera_state"]))
 
@@ -113,15 +134,17 @@ class ActionContractTests(unittest.TestCase):
         env.reset(seed=1)
 
         first = env.step(
-            {
-                "type": "ChangeViewpoint",
-                "direction": "E",
-                "elevation_layer": 9,
-                "distance": "Medium",
-                "target_block": {"layer": 10, "color": "Green"},
-            }
+            wrapped(
+                {
+                    "type": "ChangeViewpoint",
+                    "direction": "E",
+                    "elevation_layer": 9,
+                    "distance": "Medium",
+                    "target_block": {"layer": 10, "color": "Green"},
+                }
+            )
         )
-        second = env.step(viewpoint(direction="E", elevation_layer=9, distance="Medium"))
+        second = env.step(wrapped(viewpoint(direction="E", elevation_layer=9, distance="Medium")))
 
         self.assertIn("target_block", json.loads(first.info["camera_state"]))
         self.assertNotIn("target_block", json.loads(second.info["camera_state"]))
@@ -131,46 +154,79 @@ class ActionContractTests(unittest.TestCase):
         env.reset(seed=1)
 
         accepted = env.step(
-            {
-                "type": "ChangeViewpoint",
-                "direction": "E",
-                "elevation_layer": 9,
-                "distance": "Medium",
-                "target_block": {"layer": 10, "color": "Green"},
-            }
+            wrapped(
+                {
+                    "type": "ChangeViewpoint",
+                    "direction": "E",
+                    "elevation_layer": 9,
+                    "distance": "Medium",
+                    "target_block": {"layer": 10, "color": "Green"},
+                }
+            )
         )
         rejected = env.step(
-            {
-                "type": "ChangeViewpoint",
-                "direction": "E",
-                "elevation_layer": 9,
-                "distance": "Medium",
-                "target_block": {"layer": 10, "color": "Brown"},
-            }
+            wrapped(
+                {
+                    "type": "ChangeViewpoint",
+                    "direction": "E",
+                    "elevation_layer": 9,
+                    "distance": "Medium",
+                    "target_block": {"layer": 10, "color": "Brown"},
+                }
+            )
         )
 
         self.assertEqual(accepted.reward, 0.0)
         self.assertEqual(rejected.reward, INVALID_ACTION_PENALTY)
         self.assertIn("Blue, Green, or Red", rejected.info["events"])
 
+    def test_prompt_tracks_last_five_contexts(self) -> None:
+        env = JengaBenchEnv()
+        initial = env.reset(seed=1)
+
+        self.assertIn("Last 5 contexts (oldest to newest): none", initial["system_prompt"])
+        for index in range(6):
+            result = env.step(
+                wrapped(
+                    viewpoint(direction=DIRECTIONS[index % len(DIRECTIONS)]),
+                    context=f"context {index + 1}",
+                )
+            )
+
+        self.assertEqual(
+            json.loads(result.info["recent_contexts"]),
+            ["context 2", "context 3", "context 4", "context 5", "context 6"],
+        )
+        self.assertIn(
+            "Last 5 contexts (oldest to newest): 1. context 2 | 2. context 3 | 3. context 4 | 4. context 5 | 5. context 6",
+            result.system_prompt or "",
+        )
+
 
 class ManifestTests(unittest.TestCase):
     def test_manifest_validates(self) -> None:
-        domain = domain_config_from_manifest(ROOT / "benchanything.json")
+        domain = domain_config_from_manifest(ROOT / "auxiliary" / "benchanything.json")
 
         self.assertEqual(domain.id, "jenga-bench")
         self.assertEqual(domain.binding_vow.observation_space.type, SpaceType.IMAGE)
         self.assertEqual(domain.scoring.primary_metric, "normalized_score")
 
     def test_manifest_is_json(self) -> None:
-        manifest = json.loads((ROOT / "benchanything.json").read_text(encoding="utf-8"))
+        manifest = json.loads((ROOT / "auxiliary" / "benchanything.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["tags"], ["tier1"])
         self.assertEqual(manifest["binding_vow"]["action_space"]["type"], "json")
         action_space = manifest["binding_vow"]["action_space"]
+        self.assertIn("context", action_space["description"])
         self.assertIn("PlaceBack", action_space["description"])
 
         schema = json.loads(action_space["schema_ref"])
-        variants = {variant["properties"]["type"]["const"]: variant for variant in schema["oneOf"]}
+        self.assertEqual(schema["required"], ["context", "action"])
+        self.assertFalse(schema["additionalProperties"])
+        self.assertEqual(schema["properties"]["context"]["type"], "string")
+        variants = {
+            variant["properties"]["type"]["const"]: variant
+            for variant in schema["properties"]["action"]["oneOf"]
+        }
         self.assertEqual(set(variants), {"ChangeViewpoint", "Push", "PlaceBack"})
         self.assertIn("direction", variants["ChangeViewpoint"]["properties"])
         self.assertIn("elevation_layer", variants["ChangeViewpoint"]["properties"])

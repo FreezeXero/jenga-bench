@@ -28,6 +28,13 @@ else:
     REQUEST = None
 
 
+def wrapped(action: dict, context: str = "Assess current state.") -> dict:
+    return {
+        "context": context,
+        "action": action,
+    }
+
+
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
 class DynamicTowerTests(unittest.TestCase):
     def test_untouched_tower_settles_and_remains_upright(self) -> None:
@@ -270,24 +277,32 @@ class DynamicTowerTests(unittest.TestCase):
 
 @unittest.skipUnless(PHYSICS_AVAILABLE, "requires pybullet; run in Dockerfile.physics")
 class ModelPushTests(unittest.TestCase):
-    def test_model_push_returns_final_png_and_resets_view_counter(self) -> None:
+    def test_model_push_returns_final_png_and_preserves_extraction_countdown(self) -> None:
         env = JengaBenchEnv()
         try:
             env.reset(seed=0)
-            env.step({"type": "ChangeViewpoint", "direction": "E", "elevation_layer": 9, "distance": "Medium"})
+            env.step(
+                wrapped(
+                    {"type": "ChangeViewpoint", "direction": "E", "elevation_layer": 9, "distance": "Medium"},
+                    context="Check the east face first.",
+                )
+            )
             result = env.step(
-                {
-                    "type": "Push",
-                    "layer": 8,
-                    "color": "Green",
-                    "face": "East",
-                    "contact": "center",
-                    "intensity": "Gentle",
-                }
+                wrapped(
+                    {
+                        "type": "Push",
+                        "layer": 8,
+                        "color": "Green",
+                        "face": "East",
+                        "contact": "center",
+                        "intensity": "Gentle",
+                    },
+                    context="Probe the same block gently.",
+                )
             )
             self.assertEqual(result.observation[:8], b"\x89PNG\r\n\x1a\n")
-            self.assertEqual(env._consecutive_viewpoints, 0)
             self.assertEqual(result.info["outcome"], "settled")
+            self.assertEqual(result.info["moves_until_extraction"], "8")
             self.assertGreater(int(result.info["frame_count"]), 1)
             self.assertIsInstance(json.loads(result.info["replay_frames"]), list)
         finally:
@@ -298,14 +313,16 @@ class ModelPushTests(unittest.TestCase):
         try:
             env.reset(seed=0)
             result = env.step(
-                {
-                    "type": "Push",
-                    "layer": 8,
-                    "color": "Green",
-                    "face": "North",
-                    "contact": "center",
-                    "intensity": "Gentle",
-                }
+                wrapped(
+                    {
+                        "type": "Push",
+                        "layer": 8,
+                        "color": "Green",
+                        "face": "North",
+                        "contact": "center",
+                        "intensity": "Gentle",
+                    }
+                )
             )
             self.assertEqual(result.reward, -0.5)
             self.assertFalse(result.terminated)
@@ -317,25 +334,35 @@ class ModelPushTests(unittest.TestCase):
         try:
             env.reset(seed=0)
             result = env.step(
-                {
-                    "type": "Push",
-                    "layer": 10,
-                    "color": "Green",
-                    "face": "East",
-                    "contact": "center",
-                    "intensity": "Hard",
-                }
+                wrapped(
+                    {
+                        "type": "Push",
+                        "layer": 10,
+                        "color": "Green",
+                        "face": "East",
+                        "contact": "center",
+                        "intensity": "Hard",
+                    },
+                    context="This middle block looks loose enough to extract.",
+                )
             )
             self.assertFalse(result.terminated)
             self.assertEqual(result.reward, 1.0)
             self.assertEqual(result.info["outcome"], "extracted")
             self.assertEqual(result.info["phase"], "place_back")
             self.assertEqual(result.info["blocks_removed"], "1")
+            self.assertEqual(result.info["moves_until_extraction"], "10")
             self.assertIn("Available placement positions: Left, Middle, Right", result.system_prompt)
-            placed = env.step({"type": "PlaceBack", "position": "Middle"})
+            placed = env.step(
+                wrapped(
+                    {"type": "PlaceBack", "position": "Middle"},
+                    context="Place it safely back in the middle slot.",
+                )
+            )
             self.assertFalse(placed.terminated)
             self.assertEqual(placed.info["outcome"], "placed")
             self.assertEqual(placed.info["phase"], "push")
+            self.assertEqual(placed.info["moves_until_extraction"], "9")
         finally:
             env.close()
 
