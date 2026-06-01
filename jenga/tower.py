@@ -38,9 +38,9 @@ class SlotDefinition:
 
 
 NORTH_SOUTH_SLOTS = (
-    SlotDefinition("East", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Blue", (128, 153, 238)),
+    SlotDefinition("West", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Blue", (128, 153, 238)),
     SlotDefinition("Middle", 0.0, "Green", (74, 176, 120)),
-    SlotDefinition("West", BLOCK_WIDTH + BLOCK_CLEARANCE, "Red", (238, 117, 99)),
+    SlotDefinition("East", BLOCK_WIDTH + BLOCK_CLEARANCE, "Red", (238, 117, 99)),
 )
 EAST_WEST_SLOTS = (
     SlotDefinition("South", -(BLOCK_WIDTH + BLOCK_CLEARANCE), "Blue", (128, 153, 238)),
