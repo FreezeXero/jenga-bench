@@ -39,7 +39,7 @@ DISTANCES = {"Close": 15.0, "Medium": 30.0, "Full": 45.0}
 
 class TargetBlock(BaseModel):
     layer: int
-    color: Literal["Blue", "Brown", "Red"]
+    color: Literal["Blue", "Green", "Red"]
 
 class CameraRequest(BaseModel):
     direction: Literal["N", "NE", "E", "SE", "S", "SW", "W", "NW"] = "SW"
@@ -109,6 +109,9 @@ class PreviewState:
                 blocks.append(
                     {
                         "id": block.spec.internal_id,
+                        "layer": block.spec.layer,
+                        "slot": block.spec.slot,
+                        "color_name": block.spec.color_name,
                         "position": position,
                         "rotation": rotation,
                         "size": size,

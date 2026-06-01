@@ -61,7 +61,7 @@ BLOCK_MASS = 0.120  # 120 g
 - Each block gets an immutable internal ID independent of its visible color
 - Assign display colors dynamically from the current orientation and slot:
   North-South layers use Red, Lime, Blue from East to West; East-West layers
-  use Wintergreen, Purple, Brown from South to North
+  use Wintergreen, Purple, Green from South to North
 - Recolor extracted blocks when placed into a new top-layer slot
 - Base: black box, ~4.5cm tall (3 layers), 25×25cm
 - Floor: beneath base, for blocks to land on

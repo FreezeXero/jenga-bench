@@ -603,6 +603,11 @@ body {
 }
 
 .form-input:focus { border-color: var(--fg-accent); }
+.form-input:disabled,
+.form-input.is-disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 .hidden { display: none !important; }
 
@@ -634,9 +639,21 @@ body {
 }
 
 .pill:hover { color: var(--text); border-color: var(--fg-accent); }
+.pill.disabled,
+.pill:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+  color: var(--muted);
+  border-color: var(--surface-highest);
+}
+.pill.disabled:hover,
+.pill:disabled:hover {
+  color: var(--muted);
+  border-color: var(--surface-highest);
+}
 .pill.active { background: oklch(48.5% 0.108 60.7); color: #fff; border-color: oklch(48.5% 0.108 60.7); }
 .pill.active[data-val="Blue"]  { background: oklch(48.3% 0.099 242.0); color: #fff; border-color: oklch(48.3% 0.099 242.0); }
-.pill.active[data-val="Brown"] { background: oklch(48.5% 0.108 60.7);  color: #fff; border-color: oklch(48.5% 0.108 60.7); }
+.pill.active[data-val="Green"] { background: oklch(52.0% 0.128 149.0); color: #fff; border-color: oklch(52.0% 0.128 149.0); }
 .pill.active[data-val="Red"]   { background: oklch(48.4% 0.120 15.2);  color: #fff; border-color: oklch(48.4% 0.120 15.2); }
 
 .card-actions {

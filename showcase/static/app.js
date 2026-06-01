@@ -19,8 +19,8 @@ let sandboxTerminated = false;
 const VISUAL_POSITION_EPSILON = .0005;
 const VISUAL_ROTATION_EPSILON = .002;
 const colorOptions = {
-  odd: ["Blue", "Brown", "Red"],
-  even: ["Blue", "Brown", "Red"],
+  odd: ["Blue", "Green", "Red"],
+  even: ["Blue", "Green", "Red"],
 };
 const faceOptions = { odd: ["North", "South"], even: ["East", "West"] };
 const contactOptions = ["center", "left", "right"];
@@ -30,6 +30,48 @@ function syncPills(groupId, selectId) {
   document.querySelectorAll(`#${groupId} .pill`).forEach(p => {
     p.classList.toggle('active', p.dataset.val === val);
   });
+}
+
+function firstEnabledOption(select) {
+  return Array.from(select.options).find((option) => !option.disabled)?.value || "";
+}
+
+function setPillEnabled(groupId, allowedValues) {
+  const allowed = new Set(allowedValues);
+  document.querySelectorAll(`#${groupId} .pill`).forEach((pill) => {
+    const enabled = allowed.has(pill.dataset.val);
+    pill.disabled = !enabled;
+    pill.classList.toggle("disabled", !enabled);
+    if (!enabled) {
+      pill.classList.remove("active");
+    }
+  });
+}
+
+function updatePlacementOptions() {
+  const select = document.querySelector("#place-position");
+  const available = scene?.available_placement_positions || [];
+  const allPositions = ["Left", "Middle", "Right"];
+  select.replaceChildren(
+    ...allPositions.map((value) => {
+      const option = new Option(value, value, false, false);
+      option.disabled = !available.includes(value);
+      return option;
+    }),
+  );
+  if (!available.includes(select.value)) {
+    select.value = firstEnabledOption(select);
+  }
+  setPillEnabled("placement-pills", available);
+  syncPills("placement-pills", "place-position");
+  return available.length > 0;
+}
+
+function rebuildPills(groupId, values) {
+  const group = document.querySelector(`#${groupId}`);
+  group.innerHTML = values.map((value) => (
+    `<button class="pill" data-val="${value}">${value}</button>`
+  )).join("");
 }
 
 function clamp(value, low, high) {
@@ -363,10 +405,8 @@ function applyScene(nextScene, { preserveCamera = false } = {}) {
   setSeedValue(nextScene.seed ?? 0);
   if (!preserveCamera) Object.assign(camera, nextScene.camera);
   document.querySelector("#push-layer").max = String(nextScene.max_push_layer ?? 17);
-  document.querySelector("#place-position").replaceChildren(
-    ...(nextScene.available_placement_positions || []).map((value) => new Option(value)),
-  );
-  syncPills("placement-pills", "place-position");
+  updatePlacementOptions();
+  updatePushOptions();
   loadGeometry();
   updateMetadata();
   renderScene();
@@ -401,11 +441,13 @@ function updateActionControls() {
   const showPush = phase === "push" && !sandboxBusy && !sandboxTerminated && wantsPush;
   const showPlace = phase === "place_back" && !sandboxBusy && !sandboxTerminated && wantsPush;
   const showReset = !phase || sandboxTerminated || (!sandboxBusy && !showPush && !showPlace && wantsPush);
+  const hasValidPushColor = Boolean(document.querySelector("#push-color").value);
+  const hasValidPlacement = Boolean(document.querySelector("#place-position").value);
   document.querySelector("#panel-push").classList.toggle("hidden", !showPush);
   document.querySelector("#panel-place").classList.toggle("hidden", !showPlace);
   document.querySelector("#panel-reset").classList.toggle("hidden", !showReset);
-  document.querySelector("#push").disabled = sandboxBusy;
-  document.querySelector("#place-back").disabled = sandboxBusy;
+  document.querySelector("#push").disabled = sandboxBusy || !hasValidPushColor;
+  document.querySelector("#place-back").disabled = sandboxBusy || !hasValidPlacement;
   document.querySelector("#reset-tower").disabled = sandboxBusy;
   const pushLabel = document.querySelector('.llm-action-label[data-action="push"]');
   if (pushLabel) {
@@ -522,11 +564,57 @@ function connectSandbox() {
 }
 
 function updatePushOptions() {
+  const layerInput = document.querySelector("#push-layer");
+  const maxPushLayer = Number(scene?.max_push_layer ?? 17);
+  const requestedLayer = Number(layerInput.value || 1);
+  const layer = clamp(requestedLayer, 1, Math.max(maxPushLayer, 1));
+  if (layer !== requestedLayer) {
+    layerInput.value = String(layer);
+  }
   const parity = Number(document.querySelector("#push-layer").value) % 2 ? "odd" : "even";
-  document.querySelector("#push-color").replaceChildren(...colorOptions[parity].map((value) => new Option(value)));
-  document.querySelector("#push-face").replaceChildren(...faceOptions[parity].map((value) => new Option(value)));
+  const validColors = scene
+    ? colorOptions[parity].filter((color) => scene.blocks.some((block) => block.layer === layer && block.color_name === color))
+    : [...colorOptions[parity]];
+  rebuildPills("color-pills", colorOptions[parity]);
+  const colorSelect = document.querySelector("#push-color");
+  colorSelect.replaceChildren(
+    ...colorOptions[parity].map((value) => {
+      const option = new Option(value, value, false, false);
+      option.disabled = !validColors.includes(value);
+      return option;
+    }),
+  );
+  if (!validColors.includes(colorSelect.value)) {
+    colorSelect.value = firstEnabledOption(colorSelect);
+  }
+  setPillEnabled("color-pills", validColors);
+
+  rebuildPills("face-pills", faceOptions[parity]);
+  const faceSelect = document.querySelector("#push-face");
+  faceSelect.replaceChildren(...faceOptions[parity].map((value) => new Option(value)));
+  if (!faceOptions[parity].includes(faceSelect.value)) {
+    faceSelect.value = faceOptions[parity][0] || "";
+  }
+  setPillEnabled("face-pills", faceOptions[parity]);
+  if (typeof bindPills === "function") {
+    bindPills("color-pills", "push-color");
+    bindPills("face-pills", "push-face");
+  }
   syncPills("color-pills", "push-color");
   syncPills("face-pills", "push-face");
+  updateActionControls();
+}
+
+function updateTargetBlockControls() {
+  const targetLayerInput = document.querySelector("#cam-target-layer");
+  const targetColorSelect = document.querySelector("#cam-target-color");
+  const hasTarget = Boolean(targetColorSelect.value);
+
+  targetLayerInput.disabled = !hasTarget;
+  targetLayerInput.classList.toggle("is-disabled", !hasTarget);
+  if (!hasTarget) {
+    targetLayerInput.value = "";
+  }
 }
 
 async function loadScene(path = "/api/state", method = "GET") {
@@ -609,8 +697,10 @@ document.querySelector("#change-viewpoint").addEventListener("click", () => {
   const dir = document.querySelector("#cam-direction").value || "SW";
   const elevLayer = clamp(Number(document.querySelector("#cam-elevation").value) || 9, 1, 18);
   const dist = document.querySelector("#cam-distance").value || "Full";
-  const targetLayer = Number(document.querySelector("#cam-target-layer").value) || null;
   const targetColor = document.querySelector("#cam-target-color").value || null;
+  const targetLayer = targetColor
+    ? clamp(Number(document.querySelector("#cam-target-layer").value) || elevLayer, 1, 18)
+    : null;
 
   llmCamera.direction = dir;
   llmCamera.elevation_layer = elevLayer;
@@ -622,6 +712,8 @@ document.querySelector("#change-viewpoint").addEventListener("click", () => {
   if (typeof fetchPybulletFrame === "function") fetchPybulletFrame();
 });
 
+document.querySelector("#cam-target-color").addEventListener("change", updateTargetBlockControls);
+updateTargetBlockControls();
 document.querySelector("#push-contact").replaceChildren(...contactOptions.map((value) => new Option(value)));
 updatePushOptions();
 connectSandbox();
