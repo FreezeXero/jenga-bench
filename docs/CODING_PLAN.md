@@ -177,7 +177,7 @@ Update from scaffold to match Jenga:
 |------------------------|--------------------------------------|
 | id                     | jenga-bench                          |
 | observation_space.type | image                                |
-| action_space.type      | json wrapper with `context` + nested `action` |
+| action_space.type      | flat json action with required `context`      |
 | reward.range           | { low: -10.5, high: 1.0 }           |
 | episode.max_steps      | 1000                                  |
 | episode.deterministic  | true                                 |

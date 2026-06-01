@@ -79,7 +79,7 @@ class JengaBenchEnv(BaseEnv):
                 event="invalid_action: episode already terminated",
             )
 
-        context, wrapped_action, error = self._validate_wrapped_action(action)
+        context, error = self._validate_action_context(action)
         if error is not None:
             self._raw_points += INVALID_ACTION_PENALTY
             return self._result_after_non_extraction_step(
@@ -88,19 +88,26 @@ class JengaBenchEnv(BaseEnv):
             )
 
         assert context is not None
-        assert wrapped_action is not None
         self._remember_context(context)
 
-        if wrapped_action.get("type") == "Push":
-            return self._step_push(wrapped_action)
-        if wrapped_action.get("type") == "PlaceBack":
-            return self._step_place_back(wrapped_action)
+        if action.get("type") == "Push":
+            return self._step_push(action)
+        if action.get("type") == "PlaceBack":
+            return self._step_place_back(action)
 
-        target_block = wrapped_action.get("target_block")
+        error = self._validate_change_viewpoint(action)
+        if error is not None:
+            self._raw_points += INVALID_ACTION_PENALTY
+            return self._result_after_non_extraction_step(
+                reward=INVALID_ACTION_PENALTY,
+                events=[f"invalid_action: {error}"],
+            )
+
+        target_block = action.get("target_block")
         self._camera = CameraState(
-            direction=wrapped_action["direction"],
-            elevation_layer=int(wrapped_action["elevation_layer"]),
-            distance=wrapped_action["distance"],
+            direction=action["direction"],
+            elevation_layer=int(action["elevation_layer"]),
+            distance=action["distance"],
             target_layer=int(target_block["layer"]) if target_block else None,
             target_color=target_block.get("color") if target_block else None,
         )
@@ -236,16 +243,15 @@ class JengaBenchEnv(BaseEnv):
         )
         return (
             "You are playing JengaBench. Use the image as the current camera view. "
-            'Return exactly one JSON object with this shape: '
-            '{"context":"brief rationale","action":{...}}. '
-            'The nested action must be one of '
-            '{"type":"ChangeViewpoint","direction":"N|NE|E|SE|S|SW|W|NW",'
+            'Return exactly one flat JSON action object. Every action must include '
+            '"context":"brief rationale". The action must be one of '
+            '{"type":"ChangeViewpoint","context":"brief rationale","direction":"N|NE|E|SE|S|SW|W|NW",'
             '"elevation_layer":1..18,"distance":"Close|Medium|Full",'
             '"target_block":{"layer":int,"color":"Blue|Green|Red"}} or '
-            '{"type":"Push","layer":"1..one below current top layer","color":"Blue|Green|Red",'
+            '{"type":"Push","context":"brief rationale","layer":"1..one below current top layer","color":"Blue|Green|Red",'
             '"face":"North|South|East|West","contact":"center|left|right",'
             '"intensity":"Gentle|Firm|Hard"} or '
-            '{"type":"PlaceBack","position":"Left|Middle|Right"}. '
+            '{"type":"PlaceBack","context":"brief rationale","position":"Left|Middle|Right"}. '
             f"Camera: direction={self._camera.direction}, "
             f"elevation_layer={self._camera.elevation_layer}, "
             f"distance={self._camera.distance}. "
@@ -286,26 +292,13 @@ class JengaBenchEnv(BaseEnv):
         self._context_history = self._context_history[-CONTEXT_HISTORY_LIMIT:]
 
     @staticmethod
-    def _validate_wrapped_action(action: Any) -> tuple[str | None, dict[str, Any] | None, str | None]:
+    def _validate_action_context(action: Any) -> tuple[str | None, str | None]:
         if not isinstance(action, dict):
-            return None, None, "action must be a JSON object"
-        if set(action) != {"context", "action"}:
-            missing = [field for field in ("context", "action") if field not in action]
-            if missing:
-                return None, None, f"missing field(s): {', '.join(missing)}"
-            extras = sorted(field for field in action if field not in {"context", "action"})
-            return None, None, f"unexpected field(s): {', '.join(extras)}"
+            return None, "action must be a JSON object"
         context = action.get("context")
         if not isinstance(context, str) or not context.strip():
-            return None, None, "context must be a non-empty string"
-        wrapped_action = action.get("action")
-        if not isinstance(wrapped_action, dict):
-            return None, None, "action field must be a JSON object"
-        if wrapped_action.get("type") == "Push":
-            return context, wrapped_action, None
-        if wrapped_action.get("type") == "PlaceBack":
-            return context, wrapped_action, None
-        return context, wrapped_action, JengaBenchEnv._validate_change_viewpoint(wrapped_action)
+            return None, "context must be a non-empty string"
+        return context, None
 
     @staticmethod
     def _validate_change_viewpoint(action: Any) -> str | None:

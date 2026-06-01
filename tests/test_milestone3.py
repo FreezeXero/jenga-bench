@@ -28,10 +28,10 @@ else:
     REQUEST = None
 
 
-def wrapped(action: dict, context: str = "Assess current state.") -> dict:
+def with_context(action: dict, context: str = "Assess current state.") -> dict:
     return {
         "context": context,
-        "action": action,
+        **action,
     }
 
 
@@ -282,13 +282,13 @@ class ModelPushTests(unittest.TestCase):
         try:
             env.reset(seed=0)
             env.step(
-                wrapped(
+                with_context(
                     {"type": "ChangeViewpoint", "direction": "E", "elevation_layer": 9, "distance": "Medium"},
                     context="Check the east face first.",
                 )
             )
             result = env.step(
-                wrapped(
+                with_context(
                     {
                         "type": "Push",
                         "layer": 8,
@@ -313,7 +313,7 @@ class ModelPushTests(unittest.TestCase):
         try:
             env.reset(seed=0)
             result = env.step(
-                wrapped(
+                with_context(
                     {
                         "type": "Push",
                         "layer": 8,
@@ -334,7 +334,7 @@ class ModelPushTests(unittest.TestCase):
         try:
             env.reset(seed=0)
             result = env.step(
-                wrapped(
+                with_context(
                     {
                         "type": "Push",
                         "layer": 10,
@@ -354,7 +354,7 @@ class ModelPushTests(unittest.TestCase):
             self.assertEqual(result.info["moves_until_extraction"], "10")
             self.assertIn("Available placement positions: Left, Middle, Right", result.system_prompt)
             placed = env.step(
-                wrapped(
+                with_context(
                     {"type": "PlaceBack", "position": "Middle"},
                     context="Place it safely back in the middle slot.",
                 )

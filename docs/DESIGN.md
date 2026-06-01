@@ -132,14 +132,18 @@ Exactly one JSON object is submitted per `step` call:
 
 ```json
 {
+  "type": "ChangeViewpoint",
   "context": "Brief rationale for this turn.",
-  "action": { "type": "ChangeViewpoint" | "Push" | "PlaceBack", "...": "..." }
+  "direction": "NW",
+  "elevation_layer": 9,
+  "distance": "Full"
 }
 ```
 
 `context` is a short rationale string that is fed back to the model in the next
-turn's prompt history. `action` is the executable env action. The three full
-benchmark action types remain ChangeViewpoint, Push, and PlaceBack.
+turn's prompt history. It is a required field alongside the executable action
+fields. The three full benchmark action types remain ChangeViewpoint, Push, and
+PlaceBack.
 
 #### Change Viewpoint
 

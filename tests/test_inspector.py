@@ -184,6 +184,7 @@ class RenderCompatibilityTests(unittest.TestCase):
             env.step(
                 {
                     "type": "ChangeViewpoint",
+                    "context": "Aim at the upper green block.",
                     "direction": "E",
                     "elevation_layer": 5,
                     "distance": "Full",

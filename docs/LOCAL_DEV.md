@@ -54,7 +54,7 @@ mesocosm run local --manifest benchanything.json --model ollama/gemma3
 ```
 
 Uses `benchanything.json` for the binding vow and scoring. Does **not** register the domain or create platform runs.
-The model must return wrapped JSON of the form `{"context":"...", "action": {...}}`, not a bare action object.
+The model must return one flat JSON action object with a brief `context` field, such as `{"type":"Push","context":"Probe the loose middle block.","layer":8,"color":"Green","face":"East","contact":"center","intensity":"Gentle"}`.
 
 ## Flags
 

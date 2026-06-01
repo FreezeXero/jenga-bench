@@ -157,7 +157,13 @@ class SimulationTests(unittest.TestCase):
             initial = env.reset(seed=4)["data"]
             transforms = env._simulation.transforms()
             result = env.step(
-                {"type": "ChangeViewpoint", "azimuth": 90, "pitch": 5, "distance_cm": 60}
+                {
+                    "type": "ChangeViewpoint",
+                    "context": "Inspect from the east.",
+                    "direction": "E",
+                    "elevation_layer": 9,
+                    "distance": "Medium",
+                }
             )
             self.assertNotEqual(initial, result.observation)
             self.assertEqual(transforms, env._simulation.transforms())
