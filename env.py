@@ -347,13 +347,12 @@ class JengaBenchEnv(BaseEnv):
         see = action.get("see")
         do = action.get("do")
         nxt = action.get("next")
-        if not isinstance(see, str) or not see.strip():
-            return None, "see must be a non-empty string"
-        if not isinstance(do, str) or not do.strip():
-            return None, "do must be a non-empty string"
-        if not isinstance(nxt, str) or not nxt.strip():
-            return None, "next must be a non-empty string"
-        return f"SEE: {see.strip()} | DO: {do.strip()} | NEXT: {nxt.strip()}", None
+        if isinstance(see, str) and see.strip() and isinstance(do, str) and do.strip() and isinstance(nxt, str) and nxt.strip():
+            return f"SEE: {see.strip()} | DO: {do.strip()} | NEXT: {nxt.strip()}", None
+        context = action.get("context")
+        if isinstance(context, str) and context.strip():
+            return context, None
+        return None, "action must include either see/do/next fields or a context string"
 
     @staticmethod
     def _validate_change_viewpoint(action: Any) -> str | None:

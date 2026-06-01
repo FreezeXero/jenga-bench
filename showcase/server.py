@@ -322,11 +322,21 @@ def _clean_step(step: dict, index: int) -> dict:
     camera_state = _json_value(step.get("camera_state", info.get("camera_state")), {})
     tower_state = _json_value(step.get("tower_state", info.get("tower_state")), [])
     physics_frames = _json_value(step.get("physics_frames", info.get("replay_frames")), [])
+    see = str(step.get("see") or action.get("see") or "")
+    do = str(step.get("do") or action.get("do") or "")
+    nxt = str(step.get("next") or action.get("next") or "")
+    if see and do and nxt:
+        context = f"SEE: {see} | DO: {do} | NEXT: {nxt}"
+    else:
+        context = str(step.get("context") or step.get("reasoning") or action.get("context") or info.get("latest_context") or "")
     return {
         "step": int(step.get("step", index + 1)),
         "recording_status": "recorded",
         "action": action,
-        "context": str(step.get("context") or step.get("reasoning") or action.get("context") or info.get("latest_context") or ""),
+        "context": context,
+        "see": see,
+        "do": do,
+        "next": nxt,
         "reward": float(step.get("reward", 0.0)),
         "terminated": bool(step.get("terminated", False)),
         "truncated": bool(step.get("truncated", False)),
@@ -338,56 +348,8 @@ def _clean_step(step: dict, index: int) -> dict:
     }
 
 
-def _legacy_episode(episode: dict) -> dict:
-    info = episode.get("terminal_info") if isinstance(episode.get("terminal_info"), dict) else {}
-    frames = _json_value(info.get("replay_frames"), [])
-    tower_state = _json_value(info.get("tower_state"), [])
-    camera_state = _json_value(info.get("camera_state"), {})
-    events = _json_value(info.get("events"), [])
-    step_count = int(episode.get("steps", 1) or 1)
-    unavailable = [
-        {
-            "step": index,
-            "recording_status": "unavailable",
-            "action": {},
-            "context": "",
-            "reward": 0.0,
-            "terminated": False,
-            "truncated": False,
-            "events": [],
-            "camera_state": {},
-            "agent_frame": None,
-            "tower_state": [],
-            "physics_frames": [],
-        }
-        for index in range(1, step_count)
-    ]
-    step = {
-        "step": step_count,
-        "recording_status": "recorded",
-        "action": {},
-        "context": str(info.get("latest_context", "")),
-        "reward": float(episode.get("total_reward", 0.0)),
-        "terminated": bool(info.get("termination_reason")),
-        "truncated": False,
-        "events": events if isinstance(events, list) else [],
-        "camera_state": camera_state if isinstance(camera_state, dict) else {},
-        "agent_frame": None,
-        "tower_state": tower_state if isinstance(tower_state, list) else [],
-        "physics_frames": frames if isinstance(frames, list) else [],
-    }
-    return {
-        "id": episode.get("id"),
-        "seed": episode.get("seed"),
-        "status": episode.get("status"),
-        "total_reward": episode.get("total_reward", 0.0),
-        "completeness": "partial",
-        "initial_frame": step["physics_frames"][0] if step["physics_frames"] else None,
-        "steps": [*unavailable, step],
-    }
 
-
-def _normalize_episode(payload: dict, episode: dict) -> dict:
+def _normalize_episode(payload: dict, episode: dict) -> dict | None:
     info = episode.get("terminal_info") if isinstance(episode.get("terminal_info"), dict) else {}
     replay = _json_value(info.get("episode_replay"), None)
     if isinstance(replay, dict) and isinstance(replay.get("steps"), list):
@@ -414,7 +376,7 @@ def _normalize_episode(payload: dict, episode: dict) -> dict:
                 "initial_frame": None,
                 "steps": [_clean_step(step, index) for index, step in enumerate(turns) if isinstance(step, dict)],
             }
-    return _legacy_episode(episode)
+    return None
 
 
 def _normalize_replay(payload: dict) -> dict:
@@ -422,7 +384,7 @@ def _normalize_replay(payload: dict) -> dict:
     config = run.get("config") if isinstance(run.get("config"), dict) else {}
     agent = config.get("agent_config") if isinstance(config.get("agent_config"), dict) else {}
     episodes = payload.get("episodes") if isinstance(payload.get("episodes"), list) else []
-    normalized_episodes = [_normalize_episode(payload, episode) for episode in episodes if isinstance(episode, dict)]
+    normalized_episodes = [ep for episode in episodes if isinstance(episode, dict) for ep in [_normalize_episode(payload, episode)] if ep is not None]
     return {
         "id": run.get("id"),
         "domain_name": payload.get("domain_name", "JengaBench"),

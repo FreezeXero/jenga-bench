@@ -863,8 +863,9 @@ body {
 .replay-detail {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   min-width: 0;
+  max-height: 55vh;
+  overflow-y: auto;
 }
 
 .replay-detail-inner { display: flex; flex-direction: column; gap: 10px; }

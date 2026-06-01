@@ -599,6 +599,9 @@
   function cleanAction(action) {
     const cleaned = { ...(action || {}) };
     delete cleaned.context;
+    delete cleaned.see;
+    delete cleaned.do;
+    delete cleaned.next;
     return cleaned;
   }
 
@@ -606,7 +609,7 @@
     constructor(canvas) {
       this.canvas = canvas;
       this.gl = canvas.getContext('webgl', { alpha: false, antialias: true });
-      this.camera = { azimuth: 225, pitch: 15, distance_cm: 45 };
+      this.camera = { azimuth: 135, pitch: 15, distance_cm: 45 };
       this.frame = null;
       this.drag = null;
       if (!this.gl) return;
@@ -686,8 +689,14 @@
       gl.bindBuffer(gl.ARRAY_BUFFER,this.colors);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(colors),gl.STATIC_DRAW);
       gl.bindBuffer(gl.ARRAY_BUFFER,this.normals);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array(normals),gl.STATIC_DRAW);this.render();
     }
+    resize() {
+      const rect = this.canvas.getBoundingClientRect();
+      const w = Math.round(rect.width * devicePixelRatio) || 620;
+      const h = Math.round(rect.height * devicePixelRatio) || 620;
+      if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
+    }
     render() {
-      if(!this.gl||!this.frame?.blocks?.length)return;const gl=this.gl,lm=this.lightMatrix();
+      if(!this.gl||!this.frame?.blocks?.length)return;this.resize();const gl=this.gl,lm=this.lightMatrix();
       const yaw=this.camera.azimuth*Math.PI/180,pitch=this.camera.pitch*Math.PI/180,d=this.camera.distance_cm/100,target=[0,0,.135];
       const eye=[target[0]+Math.cos(pitch)*Math.sin(yaw)*d,target[1]-Math.cos(pitch)*Math.cos(yaw)*d,target[2]+Math.sin(pitch)*d];
       const vp=multiply(perspective(52,this.canvas.width/this.canvas.height,.02,3),lookAt(eye,target));gl.enable(gl.DEPTH_TEST);gl.enable(gl.CULL_FACE);gl.cullFace(gl.BACK);
@@ -705,7 +714,7 @@
     document.querySelectorAll('.benchmark-subtab').forEach(tab=>tab.classList.remove('active')); btn.classList.add('active');
     document.getElementById('benchmark-replay').classList.toggle('hidden', name!=='replay');
     document.getElementById('benchmark-comparison').classList.toggle('hidden', name!=='comparison');
-    if (name==='replay') recordedRenderer.render();
+    if (name==='replay') { recordedRenderer.resize(); recordedRenderer.render(); }
   }
 
   async function loadReplayCatalog() {
@@ -730,7 +739,7 @@
   function selectReplayEpisode(value) {
     const episode=activeReplay?.episodes[Number(value)]; if(!episode)return;
     document.getElementById('results-seed').textContent=episode.seed ?? '—';
-    document.getElementById('replay-warning').classList.toggle('hidden',episode.completeness!=='partial');
+    document.getElementById('replay-warning').classList.add('hidden');
     currentSteps=episode.steps||[];currentStepIdx=0;replayFrameIdx=0;replayInitialFrame=episode.initial_frame;replayCurrentFrame=episode.initial_frame;
     const slider=document.getElementById('replay-step-slider');slider.max=String(Math.max(currentSteps.length-1,0));slider.value='0';
     renderTimeline();if(currentSteps.length)showStep(0);
@@ -747,14 +756,15 @@
 
   function makeStepInfo(step) {
     const wrap=el('div','replay-detail-inner'),header=el('div','step-detail-header');
-    if(step.recording_status==='unavailable'){wrap.append(el('div','replay-unavailable','Replay data unavailable for this legacy step.'));return wrap;}
+    if(step.recording_status==='unavailable'){return wrap;}
     const capture=el('div','replay-capture'),frame=el('div','step-frame');
     if(step.agent_frame){const img=el('img');img.alt='AI view';img.src=step.agent_frame.startsWith('data:')?step.agent_frame:`data:image/png;base64,${step.agent_frame}`;frame.append(img);}
     else frame.append(el('div','step-frame-placeholder','No captured AI frame'));
     capture.append(frame,el('div','step-frame-label',`AI view · step ${step.step}`));wrap.append(capture);
     const type=actionType(step), chip=el('span','chip '+(type==='ChangeViewpoint'?'blue':step.terminated?'red':''),type.toUpperCase());
     header.append(chip,el('span','step-detail-title',`Step ${step.step}`),el('span','reward-tag '+(step.reward<0?'red':step.reward>0?'green':''),`${step.reward>0?'+':''}${Number(step.reward).toFixed(1)} pts`));
-    wrap.append(header,el('div','step-reasoning',step.context||'No recorded context.'));
+    if(step.see||step.do||step.next){const r=el('div','step-reasoning');const e=s=>{const d=document.createElement('div');d.textContent=s;return d.innerHTML;};r.innerHTML='<b style="color:#6ab4e8">SEE:</b> '+e(step.see||'')+'<br><b style="color:#e8a050">DO:</b> '+e(step.do||'')+'<br><b style="color:#b07adb">NEXT:</b> '+e(step.next||'');wrap.append(header,r);}
+    else wrap.append(header,el('div','step-reasoning',step.context||'No recorded context.'));
     wrap.append(el('pre','step-action',JSON.stringify(cleanAction(step.action),null,2)));
     if(step.terminated)wrap.append(el('div','step-terminated','Episode terminated'));
     return wrap;
