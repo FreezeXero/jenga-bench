@@ -290,7 +290,7 @@ class JengaBenchEnv(BaseEnv):
             '{"type":"Push","context":"brief rationale","layer":"1..one below current top layer","color":"Blue|Green|Red",'
             '"face":"North|South|East|West","contact":"center|left|right",'
             '"intensity":"Gentle|Firm|Hard"} or '
-            '{"type":"PlaceBack","context":"brief rationale","position":"Left|Middle|Right"}. '
+            '{"type":"PlaceBack","context":"brief rationale","position":"<one of available_placement_positions>"}. '
             f"Camera: direction={self._camera.direction}, "
             f"elevation_layer={self._camera.elevation_layer}, "
             f"distance={self._camera.distance}. "

@@ -150,12 +150,15 @@ class JengaSimulation:
         return self._available_positions_for_layer(self._next_placement_layer())
 
     def _available_positions_for_layer(self, layer: int) -> tuple[str, ...]:
+        orientation = self._orientation_for_layer(layer)
+        slots = NORTH_SOUTH_SLOTS if orientation == Orientation.NORTH_SOUTH else EAST_WEST_SLOTS
+        all_names = tuple(s.name for s in slots)
         occupied = {
-            self._position_for_slot(block.spec.orientation, block.spec.slot)
+            block.spec.slot
             for block in self.blocks
             if block.body_id not in self.retired_body_ids and block.spec.layer == layer
         }
-        return tuple(position for position in ("Left", "Middle", "Right") if position not in occupied)
+        return tuple(name for name in all_names if name not in occupied)
 
     @property
     def is_connected(self) -> bool:
@@ -368,7 +371,7 @@ class JengaSimulation:
         layer = self._next_placement_layer()
         orientation = self._orientation_for_layer(layer)
         slots = NORTH_SOUTH_SLOTS if orientation == Orientation.NORTH_SOUTH else EAST_WEST_SLOTS
-        slot = slots[("Left", "Middle", "Right").index(request.position)]
+        slot = next(s for s in slots if s.name == request.position)
         anchor_x, anchor_y = self._placement_row_anchor()
         top_z = self._placement_row_surface()
         if orientation == Orientation.NORTH_SOUTH:
@@ -454,10 +457,11 @@ class JengaSimulation:
     def _validate_place(self, request: PlaceRequest) -> BlockBody:
         if self.held_block is None:
             raise PlaceValidationError("PlaceBack requires an extracted block")
-        if request.position not in ("Left", "Middle", "Right"):
-            raise PlaceValidationError("position must be Left, Middle, or Right")
-        if request.position not in self.available_placement_positions:
-            raise PlaceValidationError("position is already occupied")
+        available = self.available_placement_positions
+        if request.position not in available:
+            raise PlaceValidationError(
+                f"position must be one of: {', '.join(available)}"
+            )
         return self.held_block
 
     def _next_placement_layer(self) -> int:
@@ -501,11 +505,6 @@ class JengaSimulation:
             if spec.orientation == Orientation.NORTH_SOUTH
             else (length, width, height)
         )
-
-    @staticmethod
-    def _position_for_slot(orientation: Orientation, slot: str) -> str:
-        names = NORTH_SOUTH_SLOTS if orientation == Orientation.NORTH_SOUTH else EAST_WEST_SLOTS
-        return ("Left", "Middle", "Right")[[value.name for value in names].index(slot)]
 
     def _world_contact_point(self, target: BlockBody, request: PushRequest) -> tuple[float, ...]:
         lateral = {"left": -1.0, "center": 0.0, "right": 1.0}[request.contact] * (target.spec.dimensions[1] / 3)

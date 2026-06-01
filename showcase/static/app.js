@@ -51,15 +51,12 @@ function setPillEnabled(groupId, allowedValues) {
 function updatePlacementOptions() {
   const select = document.querySelector("#place-position");
   const available = scene?.available_placement_positions || [];
-  const allPositions = ["Left", "Middle", "Right"];
+  rebuildPills("placement-pills", available);
+  if (typeof bindPills === "function") bindPills("placement-pills", "place-position", () => updateActionControls());
   const emptyOpt = new Option("", "", false, false);
   select.replaceChildren(
     emptyOpt,
-    ...allPositions.map((value) => {
-      const option = new Option(value, value, false, false);
-      option.disabled = !available.includes(value);
-      return option;
-    }),
+    ...available.map((value) => new Option(value, value, false, false)),
   );
   if (select.value && !available.includes(select.value)) {
     select.value = "";
@@ -675,15 +672,26 @@ function setBusy(busy) {
   document.querySelector("#inspector-layout").classList.toggle("busy", busy);
   const isLLM = typeof currentMode !== "undefined" && currentMode === "llm";
   const hint = document.querySelector("#viewport-hint");
-  if (busy) {
+  const pybulletImg = document.querySelector("#pybullet-frame");
+  if (busy && isLLM) {
+    camera.azimuth = DIRECTION_AZIMUTHS[llmCamera.direction] ?? 135;
+    camera.distance_cm = DISTANCE_CM[llmCamera.distance] ?? 45;
+    camera.pitch = 15;
+    if (scene) scene.target = [0, 0, (llmCamera.elevation_layer - 0.5) * 0.015];
     document.querySelector("#frame").classList.remove("hidden");
-    document.querySelector("#pybullet-frame").classList.add("hidden");
+    pybulletImg.classList.remove("hidden");
+    pybulletImg.classList.add("pip");
+    if (hint) hint.textContent = "Drag to orbit · Scroll to zoom";
+  } else if (busy) {
+    document.querySelector("#frame").classList.remove("hidden");
+    pybulletImg.classList.add("hidden");
+    pybulletImg.classList.remove("pip");
     if (hint) hint.textContent = "Drag to orbit · Scroll to zoom";
   } else if (isLLM) {
     document.querySelector("#frame").classList.add("hidden");
-    document.querySelector("#pybullet-frame").classList.remove("hidden");
-    if (typeof fetchPybulletFrame === "function") fetchPybulletFrame();
-    Object.assign(camera, { azimuth: llmCamera.azimuth, pitch: llmCamera.pitch, distance_cm: llmCamera.distance_cm });
+    pybulletImg.classList.remove("hidden");
+    pybulletImg.classList.remove("pip");
+    fetchPybulletFrame();
     if (hint) hint.textContent = "Locked";
   }
   updateActionControls();
@@ -713,6 +721,10 @@ function updateActionControls() {
   document.querySelector("#panel-push").classList.toggle("hidden", !showPush);
   document.querySelector("#panel-place").classList.toggle("hidden", !showPlace);
   document.querySelector("#panel-reset").classList.toggle("hidden", !showReset);
+  if (isLLM) {
+    document.querySelector("#llm-action-selector").classList.toggle("hidden", sandboxTerminated);
+    document.querySelector("#panel-camera").classList.toggle("hidden", sandboxTerminated || llmAction !== "viewpoint");
+  }
   document.querySelector("#push").disabled = sandboxBusy || !hasValidPushColor;
   document.querySelector("#place-back").disabled = sandboxBusy || !hasValidPlacement;
   document.querySelector("#reset-tower").disabled = sandboxBusy;
@@ -743,7 +755,7 @@ function applyFrame(frame, onComplete) {
   const started = performance.now();
   if (animation) cancelAnimationFrame(animation);
   function tick(now) {
-    const amount = clamp((now - started) / (1000 / 30), 0, 1);
+    const amount = clamp((now - started) / (1000 / 10), 0, 1);
     for (const block of scene.blocks) {
       const from = starts.get(block.id);
       const to = targets.get(block.id);
