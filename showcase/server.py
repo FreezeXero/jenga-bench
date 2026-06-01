@@ -613,7 +613,8 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser()
+    parser.add_argument("--port", type=int, default=8080)
     parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"])
     args = parser.parse_args()
     logging.basicConfig(level=getattr(logging, args.log_level.upper()), format="%(name)s %(message)s")
-    uvicorn.run(app, host="0.0.0.0", port=8080, log_level=args.log_level)
+    uvicorn.run(app, host="0.0.0.0", port=args.port, log_level=args.log_level)
