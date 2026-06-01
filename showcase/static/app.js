@@ -619,7 +619,7 @@ function renderScene() {
   }
   gl.viewport(0, 0, canvas.width, canvas.height);
   const isDarkMode = document.documentElement.getAttribute('data-theme') !== 'light';
-  isDarkMode ? gl.clearColor(0.08, 0.06, 0.05, 1) : gl.clearColor(0.94, 0.91, 0.85, 1);
+  gl.clearColor(1.0, 1.0, 1.0, 1);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
   gl.useProgram(mainProgram);
   gl.uniformMatrix4fv(gl.getUniformLocation(mainProgram, "viewProjection"), false, matrix);
