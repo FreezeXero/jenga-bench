@@ -1,6 +1,6 @@
 {
   "id": "jenga-bench",
-  "adapter": "../adapter.py",
+  "adapter": "adapter.py",
   "name": "JengaBench",
   "description": "A deterministic visual benchmark for spatial reasoning and physical planning in an unstable Jenga tower.",
   "tags": ["tier1"],

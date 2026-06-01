@@ -16,8 +16,7 @@ jenga-bench/
 ├── env.py              # BaseEnv subclass — reset() and step()
 ├── adapter.py          # HTTP wrapper (provided by bench_common)
 ├── requirements.txt
-├── auxiliary/
-│   └── benchanything.json   # manifest
+├── benchanything.json   # manifest
 ├── jenga/
 │   ├── sim.py          # PyBullet tower setup, physics stepping, settling
 │   ├── tower.py        # tower/block/layer definitions, block ID scheme

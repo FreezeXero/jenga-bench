@@ -205,14 +205,14 @@ class ActionContractTests(unittest.TestCase):
 
 class ManifestTests(unittest.TestCase):
     def test_manifest_validates(self) -> None:
-        domain = domain_config_from_manifest(ROOT / "auxiliary" / "benchanything.json")
+        domain = domain_config_from_manifest(ROOT / "benchanything.json")
 
         self.assertEqual(domain.id, "jenga-bench")
         self.assertEqual(domain.binding_vow.observation_space.type, SpaceType.IMAGE)
         self.assertEqual(domain.scoring.primary_metric, "normalized_score")
 
     def test_manifest_is_json(self) -> None:
-        manifest = json.loads((ROOT / "auxiliary" / "benchanything.json").read_text(encoding="utf-8"))
+        manifest = json.loads((ROOT / "benchanything.json").read_text(encoding="utf-8"))
         self.assertEqual(manifest["tags"], ["tier1"])
         self.assertEqual(manifest["binding_vow"]["action_space"]["type"], "json")
         action_space = manifest["binding_vow"]["action_space"]
