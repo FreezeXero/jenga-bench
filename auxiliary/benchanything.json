@@ -13,7 +13,7 @@
     "observation_space": {
       "type": "image",
       "dtype": "image/png",
-      "description": "A PNG render from the current persistent camera viewpoint."
+      "description": "A PNG render from the current persistent camera viewpoint. The system_prompt includes camera state, phase, extraction count, available placement positions, and a windowed action log (last 5 entries, most recent first). Each log entry has three fields: saw (camera state before acting), did (the action taken), why (the outcome)."
     },
 
     "action_space": {
